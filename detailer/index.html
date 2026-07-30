@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ValX | Detailer Demo</title>
+    <meta name="description" content="Interactive demonstration of the ValX detailer journey.">
+    <link rel="icon" href="../assets/icon.png">
+    <link rel="stylesheet" href="../demo.css">
+    <script src="../demo.js" defer></script>
+  </head>
+  <body data-app="detailer">
+    <header class="demo-bar">
+      <a class="demo-brand" href="../"><span class="mark">V</span>ValX</a>
+      <div class="demo-meta">
+        <span class="demo-pill">DETAILER DEMO · GUARANTEED PAY</span>
+        <a class="demo-back" href="../demos/">All product demos ↗</a>
+      </div>
+    </header>
+
+    <main class="detailer-layout">
+      <header class="portal-head">
+        <div>
+          <p class="app-eyebrow">DETAILER EXPERIENCE</p>
+          <h1>Good morning, Jordan.</h1>
+        </div>
+        <div class="availability"><i></i>Available for eligible jobs</div>
+      </header>
+
+      <section class="earnings-grid" aria-label="Detailer performance summary">
+        <div class="metric"><span>THIS WEEK</span><strong>£276.40</strong></div>
+        <div class="metric"><span>COMPLETED</span><strong>4 jobs</strong></div>
+        <div class="metric"><span>RATING</span><strong>4.96</strong></div>
+      </section>
+
+      <div class="detailer-grid">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Eligible jobs nearby</h2>
+            <span>Water · radius · availability checked</span>
+          </div>
+          <div class="job-list" id="detailer-offers">
+            <button class="job-card active" type="button" data-offer="evoque">
+              <span class="job-icon"><img src="../assets/vehicles/suv-silhouette.png" alt=""></span>
+              <span>
+                <strong>Exterior + Interior</strong>
+                <small>Range Rover Evoque · Benson OX10 · 1.8 miles</small>
+                <small>Tomorrow · 10:30 · Customer water available</small>
+              </span>
+              <span class="job-pay"><b>£64.40</b><small>guaranteed pay</small></span>
+            </button>
+            <button class="job-card" type="button" data-offer="tesla">
+              <span class="job-icon"><img src="../assets/vehicles/sedan-silhouette.png" alt=""></span>
+              <span>
+                <strong>Exterior Detail</strong>
+                <small>Tesla Model 3 · Wallingford OX10 · 3.1 miles</small>
+                <small>Friday · 13:00 · Own water required</small>
+              </span>
+              <span class="job-pay"><b>£33.69</b><small>guaranteed pay</small></span>
+            </button>
+            <button class="job-card" type="button" data-offer="ranger">
+              <span class="job-icon"><img src="../assets/vehicles/pickup-silhouette.png" alt=""></span>
+              <span>
+                <strong>Premium Full Detail</strong>
+                <small>Ford Ranger · Headington OX3 · 5.2 miles</small>
+                <small>Saturday · 09:00 · Specialist job</small>
+              </span>
+              <span class="job-pay"><b>£169.94</b><small>guaranteed pay</small></span>
+            </button>
+          </div>
+
+          <div class="active-job" id="active-job">
+            <div class="stage-banner">
+              <span id="detailer-stage-label">ASSIGNED</span>
+              <h3 id="detailer-stage-title">Job accepted</h3>
+              <p id="detailer-stage-copy">The customer has been notified and the agreed pay is protected.</p>
+            </div>
+            <div class="timeline">
+              <div data-job-stage="0"><strong>Accepted</strong><small>Guaranteed pay recorded</small></div>
+              <div data-job-stage="1"><strong>On the way</strong><small>Share estimated arrival</small></div>
+              <div data-job-stage="2"><strong>Arrived</strong><small>Confirm location and vehicle access</small></div>
+              <div data-job-stage="3"><strong>In progress</strong><small>Before evidence saved</small></div>
+              <div data-job-stage="4"><strong>Completed</strong><small>After evidence and completion time saved</small></div>
+            </div>
+            <button class="primary full" type="button" id="advance-job">Start journey →</button>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="job-detail active" data-offer-detail="evoque">
+            <p class="app-eyebrow">AVAILABLE JOB</p>
+            <div class="job-summary">
+              <h2>Exterior + Interior</h2>
+              <p>Range Rover Evoque · RE22 CEX</p>
+            </div>
+            <div class="guarantee">
+              <span>GUARANTEED PAY<br>shown before acceptance</span>
+              <strong>£64.40</strong>
+            </div>
+            <div class="facts">
+              <div class="fact"><span>DISTANCE</span><strong>1.8 miles</strong></div>
+              <div class="fact"><span>DURATION</span><strong>Around 105 min</strong></div>
+              <div class="fact"><span>LOCATION</span><strong>Benson · OX10</strong></div>
+              <div class="fact"><span>FACILITIES</span><strong>Water available</strong></div>
+            </div>
+          </div>
+          <div class="job-detail" data-offer-detail="tesla">
+            <p class="app-eyebrow">AVAILABLE JOB</p>
+            <div class="job-summary"><h2>Exterior Detail</h2><p>Tesla Model 3 · OX10 7NP</p></div>
+            <div class="guarantee"><span>GUARANTEED PAY<br>shown before acceptance</span><strong>£33.69</strong></div>
+            <div class="facts">
+              <div class="fact"><span>DISTANCE</span><strong>3.1 miles</strong></div>
+              <div class="fact"><span>DURATION</span><strong>Around 65 min</strong></div>
+              <div class="fact"><span>LOCATION</span><strong>Wallingford · OX10</strong></div>
+              <div class="fact"><span>FACILITIES</span><strong>Own water required</strong></div>
+            </div>
+          </div>
+          <div class="job-detail" data-offer-detail="ranger">
+            <p class="app-eyebrow">SPECIALIST JOB</p>
+            <div class="job-summary"><h2>Premium Full Detail</h2><p>Ford Ranger · PK24 TRK</p></div>
+            <div class="guarantee"><span>GUARANTEED PAY<br>shown before acceptance</span><strong>£169.94</strong></div>
+            <div class="facts">
+              <div class="fact"><span>DISTANCE</span><strong>5.2 miles</strong></div>
+              <div class="fact"><span>DURATION</span><strong>Around 360 min</strong></div>
+              <div class="fact"><span>LOCATION</span><strong>Headington · OX3</strong></div>
+              <div class="fact"><span>FACILITIES</span><strong>Own water required</strong></div>
+            </div>
+          </div>
+          <div id="offer-actions">
+            <div class="payment-warning" style="margin-bottom:12px">
+              The amount shown is the full detailer cost. ValX does not deduct a later platform fee.
+            </div>
+            <button class="primary full" type="button" id="accept-job">Accept selected job →</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

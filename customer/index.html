@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ValX | Customer Demo</title>
+    <meta name="description" content="Interactive demonstration of the ValX customer booking journey.">
+    <link rel="icon" href="../assets/icon.png">
+    <link rel="stylesheet" href="../demo.css">
+    <script src="../demo.js" defer></script>
+  </head>
+  <body data-app="customer">
+    <header class="demo-bar">
+      <a class="demo-brand" href="../"><span class="mark">V</span>ValX</a>
+      <div class="demo-meta">
+        <span class="demo-pill">CUSTOMER DEMO · NO PAYMENT</span>
+        <a class="demo-back" href="../demos/">All product demos ↗</a>
+      </div>
+    </header>
+
+    <main class="showcase">
+      <section class="device" aria-label="ValX customer application demonstration">
+        <div class="device-screen">
+          <header class="device-head">
+            <div class="device-brand"><span class="mark">V</span>ValX</div>
+            <span class="status-line">CUSTOMER · PRIVATE BETA</span>
+            <span class="avatar">RT</span>
+          </header>
+          <div class="app-progress" aria-label="Booking progress">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+
+          <section class="screen" data-customer-screen="0">
+            <p class="app-eyebrow">STEP 1 · YOUR VEHICLE</p>
+            <h2>Confirm your vehicle.</h2>
+            <p class="screen-lead">
+              The registration is checked in DVLA mock mode. Body type controls
+              the price and predicted duration.
+            </p>
+            <div class="vehicle-card">
+              <img class="vehicle-art" src="../assets/vehicles/suv.png" alt="Range Rover Evoque">
+              <div class="vehicle-row">
+                <div>
+                  <h3>Range Rover Evoque</h3>
+                  <p>Black · Diesel · 2022 · SUV</p>
+                </div>
+                <span class="reg">RE22 CEX</span>
+              </div>
+              <div class="lookup"><b>✓</b> Mock vehicle enquiry confirmed</div>
+            </div>
+            <p class="section-label">VEHICLE SIZE RULE</p>
+            <div class="detail-card card-row">
+              <div><h3>SUV</h3><p>1.15× price and time multiplier</p></div>
+              <span class="status">CONFIRMED</span>
+            </div>
+            <div class="screen-actions">
+              <button class="primary" type="button" data-customer-next>
+                Choose a service <span>→</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="screen" data-customer-screen="1">
+            <p class="app-eyebrow">STEP 2 · SERVICE</p>
+            <h2>What does your vehicle need?</h2>
+            <p class="screen-lead">Choose a service to see the approved SUV price.</p>
+            <div class="choice-grid" id="customer-services">
+              <button class="service-choice" type="button" data-service="exterior">
+                <span><strong>Exterior Detail</strong><small>A careful exterior refresh · Around 70 min</small></span>
+                <b>from £46.00</b>
+              </button>
+              <button class="service-choice active" type="button" data-service="complete">
+                <span><em class="popular">MOST POPULAR</em><strong>Exterior + Interior</strong><small>Our everyday complete clean · Around 105 min</small></span>
+                <b>from £80.50</b>
+              </button>
+              <button class="service-choice" type="button" data-service="deep">
+                <span><strong>Deep Detail</strong><small>A deep reset, inside and out · Around 245 min</small></span>
+                <b>from £138.00</b>
+              </button>
+              <button class="service-choice" type="button" data-service="premium">
+                <span><strong>Premium Full Detail</strong><small>Comprehensive restoration · Around 345 min</small></span>
+                <b>from £201.25</b>
+              </button>
+            </div>
+            <div class="screen-actions">
+              <button class="secondary" type="button" data-customer-back>Back</button>
+              <button class="primary" type="button" data-customer-next>Set location <span>→</span></button>
+            </div>
+          </section>
+
+          <section class="screen" data-customer-screen="2">
+            <p class="app-eyebrow">STEP 3 · LOCATION &amp; TIME</p>
+            <h2>Where and when?</h2>
+            <p class="screen-lead">
+              The confirmed address and facilities control which detailers can accept.
+            </p>
+            <div class="address-card">
+              <div class="card-row">
+                <div><strong>Home</strong><p>2 Blacklands Road, Benson</p></div>
+                <span class="status green">CONFIRMED</span>
+              </div>
+              <p>Wallingford · OX10 6NW · 1.8 miles</p>
+            </div>
+            <div class="toggle-row">
+              <div><strong>Outdoor water available</strong><small>Required facilities are recorded with the job.</small></div>
+              <button class="switch on" id="water-toggle" type="button" aria-label="Toggle outdoor water"></button>
+            </div>
+            <p class="section-label">BOOKING TYPE</p>
+            <div class="choice-grid" id="booking-type">
+              <button class="option-choice active" type="button" data-booking-type="prebook">
+                <span><strong>Prebook</strong><small>Tomorrow · 10:30</small></span><b>Standard</b>
+              </button>
+              <button class="option-choice" type="button" data-booking-type="next">
+                <span><strong>Next available</strong><small>Match with the first eligible detailer</small></span><b>+£2.00</b>
+              </button>
+            </div>
+            <div class="screen-actions">
+              <button class="secondary" type="button" data-customer-back>Back</button>
+              <button class="primary" type="button" data-customer-next>Lock quote <span>→</span></button>
+            </div>
+          </section>
+
+          <section class="screen" data-customer-screen="3">
+            <p class="app-eyebrow">STEP 4 · LOCKED QUOTE</p>
+            <h2>Review your booking.</h2>
+            <p class="screen-lead">This price is locked for 15 minutes.</p>
+            <div class="quote-card">
+              <p class="app-eyebrow">CUSTOMER TOTAL</p>
+              <div class="quote-total" id="customer-total">£84.49</div>
+              <div class="quote-row"><span id="quote-service">Exterior + Interior · SUV</span><strong id="job-price">£80.50</strong></div>
+              <div class="quote-row"><span>Customer service fee</span><strong>£3.99</strong></div>
+              <div class="quote-row total"><span>Total</span><strong id="quote-total-row">£84.49</strong></div>
+              <div class="payment-warning">
+                Demonstration only. No card is requested and no payment will be taken.
+              </div>
+            </div>
+            <div class="detail-card" style="margin-top:11px">
+              <div class="card-row"><span>Vehicle</span><strong>Range Rover Evoque</strong></div>
+              <div class="quote-row"><span>Location</span><strong>Benson · OX10</strong></div>
+              <div class="quote-row"><span>Appointment</span><strong id="quote-time">Tomorrow · 10:30</strong></div>
+            </div>
+            <div class="screen-actions">
+              <button class="secondary" type="button" data-customer-back>Back</button>
+              <button class="primary" type="button" data-customer-next>Confirm request <span>→</span></button>
+            </div>
+          </section>
+
+          <section class="screen centre" data-customer-screen="4">
+            <div class="success-mark">✓</div>
+            <p class="app-eyebrow">BOOKING REQUESTED</p>
+            <h2>Your detail is being matched.</h2>
+            <p class="screen-lead">
+              No payment has been taken. ValX will notify you when an eligible
+              detailer accepts the request.
+            </p>
+            <div class="timeline" style="text-align:left">
+              <div class="done"><strong>Request confirmed</strong><small>Price and policy version saved</small></div>
+              <div class="done"><strong>Matching detailers</strong><small>Water, distance and availability checked</small></div>
+              <div><strong>Detailer assigned</strong><small>You'll see their name and arrival status</small></div>
+              <div><strong>Service completed</strong><small>Evidence and support remain linked</small></div>
+            </div>
+            <button class="primary full" type="button" data-customer-reset>Run customer demo again</button>
+          </section>
+        </div>
+      </section>
+
+      <aside class="context-panel">
+        <p class="eyebrow">CUSTOMER EXPERIENCE</p>
+        <h1>From registration to a locked booking.</h1>
+        <p>
+          Show how ValX turns a vehicle, service address and chosen detail into
+          a transparent booking request—without connecting payment during the beta.
+        </p>
+        <div class="journey-points">
+          <span><i>01</i>Vehicle-aware pricing</span>
+          <span><i>02</i>Facility-based matching</span>
+          <span><i>03</i>Locked customer total</span>
+          <span><i>04</i>Visible booking status</span>
+        </div>
+        <div class="demo-note">
+          All information is illustrative. Buttons update only this demonstration
+          and do not transmit customer information.
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>
