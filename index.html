@@ -1,43 +1,357 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Demo Website</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
-body{background:#f4f7fb;color:#333}
-header{background:#2563eb;color:#fff;padding:20px 10%;display:flex;justify-content:space-between;align-items:center}
-nav a{color:#fff;text-decoration:none;margin-left:20px}
-.hero{text-align:center;padding:100px 20px}
-.hero h1{font-size:3rem;margin-bottom:20px}
-.hero p{font-size:1.2rem;color:#666;margin-bottom:30px}
-.btn{background:#2563eb;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;display:inline-block}
-.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;padding:60px 10%}
-.card{background:#fff;padding:25px;border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,.08)}
-footer{text-align:center;padding:30px;background:#222;color:#fff;margin-top:40px}
-</style>
-</head>
-<body>
-<header>
-<h2>DemoSite</h2>
-<nav>
-<a href="#">Home</a>
-<a href="#">About</a>
-<a href="#">Services</a>
-<a href="#">Contact</a>
-</nav>
-</header>
-<section class="hero">
-<h1>Welcome to My Website</h1>
-<p>A clean and simple demo website built with HTML and CSS.</p>
-<a href="#" class="btn">Learn More</a>
-</section>
-<section class="features">
-<div class="card"><h3>🚀 Fast</h3><p>Loads quickly and works on any device.</p></div>
-<div class="card"><h3>🎨 Modern</h3><p>Simple, clean design that's easy to customize.</p></div>
-<div class="card"><h3>📱 Responsive</h3><p>Looks great on phones, tablets, and desktops.</p></div>
-</section>
-<footer><p>© 2026 DemoSite. All rights reserved.</p></footer>
-</body>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ValX | Investor &amp; Partner Demo</title>
+    <meta
+      name="description"
+      content="Explore the ValX managed marketplace for mobile vehicle detailing."
+    >
+    <meta name="theme-color" content="#0c0e0d">
+    <meta property="og:title" content="ValX | Investor &amp; Partner Demo">
+    <meta
+      property="og:description"
+      content="Customer demand, detailer opportunity and controlled marketplace operations in one guided demo."
+    >
+    <meta property="og:type" content="website">
+    <link rel="icon" href="assets/icon.png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <nav class="nav">
+        <a class="brand" href="#top" aria-label="ValX home">
+          <span>V</span>
+          <strong>ValX</strong>
+        </a>
+        <div class="nav-links">
+          <a href="#product">Product</a>
+          <a href="#model">Model</a>
+          <a href="#progress">Progress</a>
+        </div>
+        <a class="nav-cta" href="#walkthrough">Open demo</a>
+      </nav>
+
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">INVESTOR &amp; PARTNER DEMO</p>
+          <h1>
+            A managed marketplace for <em>mobile vehicle detailing.</em>
+          </h1>
+          <p class="hero-lead">
+            ValX brings customer booking, detailer operations and marketplace
+            control into one structured product.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#walkthrough">
+              Explore the product <span>→</span>
+            </a>
+            <a class="button secondary" href="#model">View the model</a>
+          </div>
+          <div class="release-note">
+            <span class="pulse"></span>
+            <p>
+              <strong>Private beta foundation</strong>
+              Payments are not connected. DVLA remains in mock mode.
+            </p>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="Interactive ValX product preview">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="phone">
+            <div class="phone-top">
+              <div class="mini-brand"><span>V</span> ValX</div>
+              <span class="secure-dot">PRIVATE BETA</span>
+            </div>
+            <div class="role-tabs" aria-label="Preview role">
+              <button type="button" data-role="customer">Customer</button>
+              <button type="button" data-role="detailer">Detailer</button>
+              <button type="button" data-role="admin">Admin</button>
+            </div>
+            <div class="vehicle-stage">
+              <span class="screen-eyebrow" id="phone-eyebrow"></span>
+              <div id="phone-visual"></div>
+              <h2 id="phone-title"></h2>
+              <p id="phone-detail"></p>
+            </div>
+            <div class="chips" id="phone-chips"></div>
+            <div class="phone-total">
+              <div>
+                <small id="phone-value-label"></small>
+                <strong id="phone-value"></strong>
+              </div>
+              <button type="button">
+                <span id="phone-action"></span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+          <div class="float-card pay-card">
+            <small>DETAILER PAY</small>
+            <strong>80%</strong>
+            <span>shown before acceptance</span>
+          </div>
+          <div class="float-card trust-card">
+            <i>✓</i>
+            <div>
+              <strong>Controlled journey</strong>
+              <span>Pricing · policy · audit</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="signal-strip" aria-label="ValX product signals">
+        <div><strong>4</strong><span>approved services</span></div>
+        <div><strong>20%</strong><span>ValX job margin</span></div>
+        <div><strong>£3.99</strong><span>customer service fee</span></div>
+        <div><strong>80%</strong><span>displayed detailer pay</span></div>
+      </section>
+
+      <section class="section product" id="product">
+        <div class="section-heading">
+          <p class="eyebrow">ONE MARKETPLACE · THREE EXPERIENCES</p>
+          <h2>Designed around every side of the service.</h2>
+          <p>
+            The same pricing, policy and booking state powers the customer,
+            detailer and administrator experiences.
+          </p>
+        </div>
+        <div class="experience-grid">
+          <article>
+            <span class="card-number">01</span>
+            <p class="eyebrow">CUSTOMERS</p>
+            <h3>Clear booking from vehicle to completion.</h3>
+            <p>
+              Vehicle-aware pricing, service-address controls, a locked total
+              and visible fulfilment status.
+            </p>
+            <button type="button" data-jump-role="customer">
+              See customer journey →
+            </button>
+          </article>
+          <article class="featured">
+            <span class="card-number">02</span>
+            <p class="eyebrow">DETAILERS</p>
+            <h3>Work offered with the important facts upfront.</h3>
+            <p>
+              Location, job scope, travel, water requirements and guaranteed
+              pay before acceptance.
+            </p>
+            <button type="button" data-jump-role="detailer">
+              See detailer journey →
+            </button>
+          </article>
+          <article>
+            <span class="card-number">03</span>
+            <p class="eyebrow">OPERATIONS</p>
+            <h3>Controls built for trust and accountability.</h3>
+            <p>
+              Role-based administration for users, jobs, evidence, policies,
+              support and audit records.
+            </p>
+            <button type="button" data-jump-role="admin">
+              See admin controls →
+            </button>
+          </article>
+        </div>
+      </section>
+
+      <section class="walkthrough" id="walkthrough">
+        <div class="walkthrough-head">
+          <div>
+            <p class="eyebrow">GUIDED PRODUCT WALKTHROUGH</p>
+            <h2>Follow the operating journey.</h2>
+          </div>
+          <div class="large-tabs" aria-label="Walkthrough role">
+            <button type="button" data-role="customer">Customer</button>
+            <button type="button" data-role="detailer">Detailer</button>
+            <button type="button" data-role="admin">Admin</button>
+          </div>
+        </div>
+        <div class="journey-grid">
+          <div class="journey-list" id="journey-list"></div>
+          <div class="journey-preview">
+            <div class="preview-grid"></div>
+            <span class="screen-eyebrow" id="journey-eyebrow"></span>
+            <div class="preview-symbol" id="journey-symbol"></div>
+            <h3 id="journey-title"></h3>
+            <p id="journey-detail"></p>
+            <div class="preview-status">
+              <span>PRODUCT STATE</span>
+              <strong id="journey-status"></strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section model" id="model">
+        <div class="model-copy">
+          <p class="eyebrow">APPROVED COMMERCIAL MODEL</p>
+          <h2>Simple economics, visible to every participant.</h2>
+          <p>
+            ValX is the customer-facing supplier. Customer job revenue and
+            detailer subcontractor cost remain clearly separated.
+          </p>
+          <div class="principles">
+            <span><i>01</i><strong>Locked customer pricing</strong></span>
+            <span><i>02</i><strong>Full pay shown to detailers</strong></span>
+            <span>
+              <i>03</i><strong>No later fee deducted at payout</strong>
+            </span>
+          </div>
+        </div>
+        <div class="economics-card">
+          <div class="economics-head">
+            <span>EXAMPLE BOOKING</span>
+            <strong>Exterior + Interior · SUV</strong>
+            <small>1.8 miles · standard prebook</small>
+          </div>
+          <div class="money-row">
+            <span>Customer job price</span><strong>£80.50</strong>
+          </div>
+          <div class="money-row">
+            <span>Service fee</span><strong>£3.99</strong>
+          </div>
+          <div class="money-row total">
+            <span>Customer total</span><strong>£84.49</strong>
+          </div>
+          <div class="split-bar"><span></span><i></i></div>
+          <div class="split-labels">
+            <span>
+              <i></i>Detailer cost <strong>£64.40 · 80%</strong>
+            </span>
+            <span>
+              <i></i>ValX job margin <strong>£16.10 · 20%</strong>
+            </span>
+          </div>
+          <p>Illustrative output from the approved shared pricing rules.</p>
+        </div>
+      </section>
+
+      <section class="services">
+        <div class="section-heading compact">
+          <p class="eyebrow">SERVICE LADDER</p>
+          <h2>Four clear products, from maintenance to restoration.</h2>
+        </div>
+        <div class="service-table">
+          <div>
+            <span>01</span><strong>Exterior Detail</strong>
+            <small>60 min</small><b>from £40</b>
+          </div>
+          <div>
+            <span>02</span><strong>Exterior + Interior</strong>
+            <small>90 min</small><b>from £70</b>
+          </div>
+          <div>
+            <span>03</span><strong>Deep Detail</strong>
+            <small>210 min</small><b>from £120</b>
+          </div>
+          <div>
+            <span>04</span><strong>Premium Full Detail</strong>
+            <small>300 min</small><b>from £175</b>
+          </div>
+        </div>
+      </section>
+
+      <section class="section progress" id="progress">
+        <div class="section-heading">
+          <p class="eyebrow">PRIVATE BETA READINESS</p>
+          <h2>Built foundation. Controlled route to market.</h2>
+          <p>
+            The product is structured to demonstrate the full service before
+            live payment and public distribution are introduced.
+          </p>
+        </div>
+        <div class="progress-grid">
+          <article>
+            <span class="status done">BUILT</span>
+            <h3>Product foundation</h3>
+            <ul>
+              <li>Expo customer/detailer application</li>
+              <li>PostgreSQL-backed onboarding</li>
+              <li>Shared pricing and policy engine</li>
+              <li>Admin and audit architecture</li>
+            </ul>
+          </article>
+          <article>
+            <span class="status ready">READY TO CONFIGURE</span>
+            <h3>Private distribution</h3>
+            <ul>
+              <li>Invite-only beta access</li>
+              <li>TestFlight and Google profiles</li>
+              <li>Staging deployment package</li>
+              <li>Automated acceptance journey</li>
+            </ul>
+          </article>
+          <article>
+            <span class="status later">SEPARATE APPROVAL</span>
+            <h3>Live operations</h3>
+            <ul>
+              <li>Payment and payout provider</li>
+              <li>DVLA production access</li>
+              <li>Administrator identity and MFA</li>
+              <li>Wider public release</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="partner-section">
+        <div>
+          <p class="eyebrow">BUILT FOR COLLABORATION</p>
+          <h2>One product, several paths to partnership.</h2>
+        </div>
+        <div class="partner-list">
+          <article>
+            <span>DETAILERS</span>
+            <h3>Flexible local supply</h3>
+            <p>
+              Qualified professionals receive clear work offers with pay
+              protected upfront.
+            </p>
+          </article>
+          <article>
+            <span>LOCAL &amp; FLEET</span>
+            <h3>Repeat service demand</h3>
+            <p>
+              A consistent booking and fulfilment layer for local organisations
+              and vehicle groups.
+            </p>
+          </article>
+          <article>
+            <span>INVESTORS</span>
+            <h3>Structured marketplace growth</h3>
+            <p>
+              A controlled foundation designed to validate density, repeat use
+              and unit economics.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="closing">
+        <div class="closing-mark">V</div>
+        <p class="eyebrow">VALX PRIVATE DEMO</p>
+        <h2>Explore the product from every side.</h2>
+        <p>
+          Use the role controls above to walk through the customer, detailer and
+          admin journeys.
+        </p>
+        <a class="button primary" href="#top">
+          Return to interactive demo <span>↑</span>
+        </a>
+      </section>
+
+      <footer>
+        <div class="brand"><span>V</span><strong>ValX</strong></div>
+        <p>Investor and partner demonstration · No live booking or payment.</p>
+        <small>© <span id="year"></span> ValX</small>
+      </footer>
+    </main>
+  </body>
 </html>
