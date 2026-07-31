@@ -1,0 +1,45 @@
+VALX INVESTOR DEMO — UPLOAD INSTRUCTIONS
+
+This folder is a complete static website. It does not require Node.js, a
+database or a build command.
+
+UPLOAD TO A NORMAL WEB HOST
+
+1. Open your hosting provider's File Manager.
+2. Open the website root, commonly named public_html, www or htdocs.
+3. Upload the CONTENTS of this folder:
+   - index.html
+   - styles.css
+   - script.js
+   - demo.css
+   - demo.js
+   - assets folder
+   - demos folder
+   - customer folder
+   - detailer folder
+   - admin folder
+4. Keep the file and folder names unchanged.
+5. Visit your domain and refresh the browser.
+
+If the host accepts ZIP uploads, upload valx-investor-demo-html.zip and choose
+"Extract" inside your website root.
+
+RECOMMENDED LOCATION
+
+Use a subdomain such as demo.yourdomain.co.uk so the demo does not replace your
+existing public website.
+
+PAGES AFTER UPLOAD
+
+- /                         Investor and partner presentation
+- /demos/                   Product demo launcher
+- /customer/                Customer booking demonstration
+- /detailer/                Detailer job demonstration
+- /admin/                   Administrator operations demonstration
+
+IMPORTANT
+
+- This is a presentation demo only.
+- It does not take payments or create real bookings.
+- DVLA remains in mock mode.
+- All interactive role and journey controls run in the visitor's browser.

@@ -1,0 +1,80 @@
+import { z } from "zod";
+
+const environment = z.object({
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
+  API_HOST: z.string().default("127.0.0.1"),
+  API_PORT: z.coerce.number().int().positive().default(4000),
+  API_CORS_ORIGINS: z
+    .string()
+    .default("http://localhost:3000,http://localhost:8081"),
+  DATABASE_URL: z.string().optional(),
+  AUTH_TOKEN_PEPPER: z.string().min(16).default("valx-local-pepper-change-me"),
+  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(168),
+  BETA_REGISTRATION_MODE: z.enum(["invite_only", "open"]).default("invite_only"),
+  BETA_INVITE_CODE: z.string().min(8).optional(),
+  BETA_ALLOWED_EMAILS: z.string().default(""),
+  SUPPORT_EMAIL: z.string().email().default("support@example.invalid"),
+  PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  DVLA_MODE: z.enum(["mock", "live"]).default("mock"),
+  DVLA_API_BASE_URL: z
+    .string()
+    .url()
+    .default(
+      "https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1"
+    ),
+  DVLA_API_KEY: z.string().optional(),
+  GOOGLE_MAPS_MODE: z.enum(["mock", "live"]).default("mock"),
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
+  GOOGLE_PLACES_BASE_URL: z
+    .string()
+    .url()
+    .default("https://places.googleapis.com/v1"),
+  GOOGLE_ROUTES_BASE_URL: z
+    .string()
+    .url()
+    .default("https://routes.googleapis.com/directions/v2")
+});
+
+export type ApiConfig = z.infer<typeof environment> & {
+  corsOrigins: string[];
+  betaAllowedEmails: string[];
+};
+
+export const loadConfig = (
+  input: NodeJS.ProcessEnv = process.env
+): ApiConfig => {
+  const parsed = environment.parse(input);
+  if (parsed.NODE_ENV === "production") {
+    z.string().min(1).parse(parsed.DATABASE_URL);
+    z.string().min(32).parse(parsed.AUTH_TOKEN_PEPPER);
+    if (
+      parsed.BETA_REGISTRATION_MODE === "invite_only" &&
+      !parsed.BETA_INVITE_CODE &&
+      !parsed.BETA_ALLOWED_EMAILS.trim()
+    ) {
+      throw new Error(
+        "Production invite-only registration needs BETA_INVITE_CODE or BETA_ALLOWED_EMAILS"
+      );
+    }
+    if (parsed.SUPPORT_EMAIL.endsWith(".invalid")) {
+      throw new Error("Production requires a monitored SUPPORT_EMAIL");
+    }
+  }
+  if (parsed.NODE_ENV === "production" && parsed.DVLA_MODE === "live") {
+    z.string().min(1).parse(parsed.DVLA_API_KEY);
+  }
+  if (parsed.NODE_ENV === "production" && parsed.GOOGLE_MAPS_MODE === "live") {
+    z.string().min(1).parse(parsed.GOOGLE_MAPS_API_KEY);
+  }
+  return {
+    ...parsed,
+    betaAllowedEmails: parsed.BETA_ALLOWED_EMAILS.split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+    corsOrigins: parsed.API_CORS_ORIGINS.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  };
+};

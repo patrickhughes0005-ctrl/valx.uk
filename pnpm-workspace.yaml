@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "demos/product-preview"
+
+allowBuilds:
+  dtrace-provider: false
+  esbuild: true
+  sharp: true
+verifyDepsBeforeRun: false

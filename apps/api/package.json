@@ -1,0 +1,28 @@
+{
+  "name": "@valx/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx --env-file-if-exists=../../.env watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@valx/database": "workspace:*",
+    "@valx/integrations": "workspace:*",
+    "@valx/pricing-policy": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.5.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5",
+    "vitest": "^3.2.4"
+  }
+}

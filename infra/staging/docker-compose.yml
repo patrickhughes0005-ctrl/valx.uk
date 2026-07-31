@@ -1,0 +1,94 @@
+name: valx-staging
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: valx
+      POSTGRES_USER: valx
+      POSTGRES_PASSWORD: ${STAGING_DATABASE_PASSWORD:?required}
+    volumes:
+      - valx_staging_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valx -d valx"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      API_CORS_ORIGINS: ${STAGING_APP_URL:?required},${STAGING_ADMIN_URL:?required}
+      DATABASE_URL: postgresql://valx:${STAGING_DATABASE_PASSWORD}@postgres:5432/valx
+      AUTH_TOKEN_PEPPER: ${AUTH_TOKEN_PEPPER:?required}
+      SESSION_TTL_HOURS: 168
+      BETA_REGISTRATION_MODE: invite_only
+      BETA_INVITE_CODE: ${BETA_INVITE_CODE:?required}
+      BETA_ALLOWED_EMAILS: ${BETA_ALLOWED_EMAILS:-}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?required}
+      PUBLIC_APP_URL: ${STAGING_APP_URL:?required}
+      DVLA_MODE: mock
+      DVLA_API_BASE_URL: https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1
+      GOOGLE_MAPS_MODE: ${GOOGLE_MAPS_MODE:-mock}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      GOOGLE_PLACES_BASE_URL: https://places.googleapis.com/v1
+      GOOGLE_ROUTES_BASE_URL: https://routes.googleapis.com/directions/v2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:4000/ready"
+        ]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/mobile/Dockerfile.web
+      args:
+        EXPO_PUBLIC_API_URL: ${STAGING_API_URL:?required}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: apps/admin/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${STAGING_API_URL:?required}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${STAGING_API_URL:?required}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?required}
+      ADMIN_PREVIEW_MODE: ${ADMIN_PREVIEW_MODE:-false}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  valx_staging_postgres:

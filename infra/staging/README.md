@@ -1,0 +1,30 @@
+# ValX staging deployment
+
+This deployment runs the ValX API, public information/admin web application and
+PostgreSQL together behind a host-managed TLS reverse proxy. The Expo product
+is exported for the web, so the browser beta and future store builds use the
+same customer/detailer application code. It is suitable for an invite-only
+staging pilot, not for the final high-availability production environment.
+
+## Host requirements
+
+- A Linux host with Docker Engine and Docker Compose v2.
+- Three DNS names: one each for the browser app, admin portal and API.
+- TLS termination through the host platform or a reverse proxy.
+- Encrypted off-host PostgreSQL backups.
+- A monitored support email address.
+
+## Deploy
+
+1. Copy `.env.example` to `.env` on the staging host and replace every example
+   value.
+2. Restrict inbound access so PostgreSQL is never public. The supplied ports
+   bind only to loopback for a reverse proxy.
+3. Run `docker compose --env-file .env up --build -d`.
+4. Route the browser app DNS name to `127.0.0.1:8080`, the admin DNS name to
+   `127.0.0.1:3000`, and the API DNS name to `127.0.0.1:4000` through HTTPS.
+5. Verify `/ready`, create two invited test accounts and complete the automated
+   private-beta acceptance script.
+
+Database migrations run before the API starts. DVLA remains in mock mode and no
+payment variables or endpoints exist.

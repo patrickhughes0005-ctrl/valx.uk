@@ -1,0 +1,11 @@
+.git
+.pnpm-store
+**/.next
+**/dist
+**/.expo
+**/node_modules
+reference
+.env
+.env.*
+!.env.example
+*.log

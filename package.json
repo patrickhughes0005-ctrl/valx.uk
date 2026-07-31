@@ -1,0 +1,30 @@
+{
+  "name": "valx",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ValX production monorepo",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "pnpm run build:packages && pnpm run build:apps",
+    "build:apps": "pnpm --filter @valx/admin --filter @valx/api --filter @valx/mobile --recursive --if-present run build",
+    "build:packages": "pnpm --filter @valx/brand --filter @valx/pricing-policy --filter @valx/integrations --filter @valx/database --recursive --if-present run build",
+    "dev:admin": "pnpm --filter @valx/admin dev",
+    "dev:api": "pnpm --filter @valx/api dev",
+    "dev:mobile": "pnpm --filter @valx/mobile start",
+    "dev:web": "pnpm --filter @valx/mobile web",
+    "build:web": "pnpm --filter @valx/mobile build:web",
+    "db:generate": "pnpm --filter @valx/database generate",
+    "db:migrate": "pnpm --filter @valx/database migrate",
+    "test:staging": "node scripts/private-beta-smoke.mjs",
+    "test": "pnpm --recursive --if-present run test",
+    "typecheck": "pnpm --recursive --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
