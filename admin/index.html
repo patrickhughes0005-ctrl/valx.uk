@@ -1,151 +1,20 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ValX | Admin Demo</title>
-    <meta name="description" content="Interactive demonstration of the private ValX operations portal.">
-    <link rel="icon" href="../assets/icon.png">
-    <link rel="stylesheet" href="../demo.css">
-    <script src="../demo.js" defer></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ff6b00" />
+    <link rel="icon" href="/valx-logo.png" />
+    <meta
+      name="description"
+      content="Interactive ValX administration product demonstration with simulated records."
+    />
+    <title>ValX | Admin App</title>
+    <script type="module" crossorigin src="/assets/admin-D-36pekr.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/client-BnsUgxtu.js">
+    <link rel="stylesheet" crossorigin href="/assets/admin-Ddvg8u8V.css">
   </head>
-  <body data-app="admin">
-    <header class="demo-bar">
-      <a class="demo-brand" href="../"><span class="mark">V</span>ValX</a>
-      <div class="demo-meta">
-        <span class="demo-pill">ADMIN DEMO · SIMULATED RECORDS</span>
-        <a class="demo-back" href="../demos/">All product demos ↗</a>
-      </div>
-    </header>
-
-    <div class="admin-shell">
-      <aside class="admin-nav">
-        <h2>Operations</h2>
-        <nav aria-label="Admin sections">
-          <button class="active" type="button" data-admin-view="overview">Overview</button>
-          <button type="button" data-admin-view="bookings">Bookings</button>
-          <button type="button" data-admin-view="detailers">Detailers</button>
-          <button type="button" data-admin-view="policies">Policies</button>
-          <button type="button" data-admin-view="audit">Audit log</button>
-        </nav>
-        <div class="admin-security">
-          <b>PRIVATE ACCESS</b><br>
-          Production requires an approved identity, MFA, role-based access and a
-          15-minute idle timeout.
-        </div>
-      </aside>
-
-      <main class="admin-main">
-        <header class="admin-top">
-          <div>
-            <p class="app-eyebrow">VALX · ADMIN</p>
-            <h1 id="admin-title">Marketplace overview</h1>
-          </div>
-          <div class="admin-user"><span>reecetomo@hotmail.co.uk</span><span class="avatar">RT</span></div>
-        </header>
-
-        <section class="admin-view active" data-admin-section="overview">
-          <div class="admin-metrics">
-            <div class="admin-metric"><span>ACTIVE BOOKINGS</span><strong>12</strong><small>4 today</small></div>
-            <div class="admin-metric"><span>AVAILABLE DETAILERS</span><strong>18</strong><small>7 online</small></div>
-            <div class="admin-metric"><span>JOB VALUE</span><strong>£956.40</strong><small>current week</small></div>
-            <div class="admin-metric"><span>OPEN SUPPORT</span><strong>3</strong><small>oldest 42 min</small></div>
-          </div>
-          <div class="admin-grid">
-            <div class="chart">
-              <div class="chart-head"><h3>Booking requests</h3><span>LAST 7 DAYS</span></div>
-              <div class="bars">
-                <div data-day="Fri" style="height:35%"></div>
-                <div data-day="Sat" style="height:58%"></div>
-                <div data-day="Sun" style="height:42%"></div>
-                <div data-day="Mon" style="height:72%"></div>
-                <div data-day="Tue" style="height:54%"></div>
-                <div data-day="Wed" style="height:86%"></div>
-                <div data-day="Thu" style="height:68%"></div>
-              </div>
-            </div>
-            <div class="chart">
-              <div class="chart-head"><h3>Needs attention</h3><span>LIVE QUEUE</span></div>
-              <div class="ops-list">
-                <div><strong>2 detailer applications</strong><span>Insurance documents ready for review</span></div>
-                <div><strong>1 unmatched booking</strong><span>Specialist water supply required</span></div>
-                <div><strong>3 support cases</strong><span>All within target response time</span></div>
-                <div><strong>0 payment exceptions</strong><span>Payments remain disabled in beta</span></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="admin-view" data-admin-section="bookings">
-          <div class="table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>BOOKING</th><th>CUSTOMER</th><th>SERVICE</th><th>DETAILER</th><th>TOTAL</th><th>STATUS</th><th></th></tr></thead>
-              <tbody>
-                <tr><td><strong>VX-2048</strong><br>Tomorrow · 10:30</td><td>Reece T.<br>RE22 CEX</td><td>Exterior + Interior</td><td>Jordan M.</td><td>£84.49</td><td><span class="status">ASSIGNED</span></td><td><button class="row-action" type="button" data-inspect-booking="VX-2048">Inspect</button></td></tr>
-                <tr><td><strong>VX-2047</strong><br>Today · 14:00</td><td>Emily R.<br>FD19 STA</td><td>Exterior Detail</td><td>Callum R.</td><td>£43.99</td><td><span class="status green">IN PROGRESS</span></td><td><button class="row-action" type="button" data-inspect-booking="VX-2047">Inspect</button></td></tr>
-                <tr><td><strong>VX-2046</strong><br>Saturday · 09:00</td><td>Tom W.<br>PK24 TRK</td><td>Premium Full Detail</td><td>Awaiting match</td><td>£216.41</td><td><span class="status">MATCHING</span></td><td><button class="row-action" type="button" data-inspect-booking="VX-2046">Inspect</button></td></tr>
-                <tr><td><strong>VX-2045</strong><br>Yesterday · 11:30</td><td>Nadia P.<br>MC20 CLS</td><td>Deep Detail</td><td>Aisha K.</td><td>£129.99</td><td><span class="status green">COMPLETED</span></td><td><button class="row-action" type="button" data-inspect-booking="VX-2045">Inspect</button></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="panel" id="booking-inspector" style="margin-top:12px">
-            <div class="panel-head"><h2>Booking VX-2048</h2><span>APPROVED PRICE VERSION · v1</span></div>
-            <div class="facts">
-              <div class="fact"><span>CUSTOMER TOTAL</span><strong>£84.49</strong></div>
-              <div class="fact"><span>DETAILER COST</span><strong>£64.40</strong></div>
-              <div class="fact"><span>VALX JOB MARGIN</span><strong>£16.10</strong></div>
-              <div class="fact"><span>SERVICE FEE</span><strong>£3.99</strong></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="admin-view" data-admin-section="detailers">
-          <div class="panel">
-            <div class="panel-head"><h2>Onboarding queue</h2><span>2 APPLICATIONS</span></div>
-            <div class="approval">
-              <div><h3>Sam Patel · Oxfordshire</h3><p>Public liability · Treatment risk · Business-use motor · Non-VAT</p></div>
-              <button class="approve" type="button">Approve detailer</button>
-            </div>
-            <div class="approval">
-              <div><h3>Mia Williams · Berkshire</h3><p>Public liability · Treatment risk · Business-use motor · VAT registered</p></div>
-              <button class="approve" type="button">Approve detailer</button>
-            </div>
-          </div>
-          <div class="panel" style="margin-top:12px">
-            <div class="panel-head"><h2>Active detailers</h2><span>INSURANCE MONITORED</span></div>
-            <div class="table-wrap">
-              <table class="admin-table">
-                <thead><tr><th>DETAILER</th><th>RADIUS</th><th>WATER</th><th>VAT</th><th>RATING</th><th>STATUS</th></tr></thead>
-                <tbody>
-                  <tr><td><strong>Jordan M.</strong><br>DX-018</td><td>12 miles</td><td>Self-sufficient</td><td>Non-VAT</td><td>4.96</td><td><span class="status green">ACTIVE</span></td></tr>
-                  <tr><td><strong>Aisha K.</strong><br>DX-011</td><td>16 miles</td><td>Self-sufficient</td><td>VAT</td><td>4.98</td><td><span class="status green">ACTIVE</span></td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="admin-view" data-admin-section="policies">
-          <div class="policy-stack">
-            <article class="policy-card"><span>CANCELLATION</span><h3>More than 24 hours</h3><p>Free cancellation or rescheduling.</p></article>
-            <article class="policy-card"><span>CANCELLATION</span><h3>Between 4 and 24 hours</h3><p>Retain only the £3.99 customer service fee.</p></article>
-            <article class="policy-card"><span>CANCELLATION</span><h3>Less than 4 hours</h3><p>Charge 50% of the job price after showing the applicable amount.</p></article>
-            <article class="policy-card"><span>NO-SHOW</span><h3>Evidence before review</h3><p>The detailer waits 15 minutes and attempts contact. A 50% charge may apply only after arrival and contact evidence are reviewed.</p></article>
-            <article class="policy-card"><span>WEATHER</span><h3>No-fault reschedule</h3><p>Unsafe or impractical weather supports a reschedule with no penalty to either party.</p></article>
-            <article class="policy-card"><span>DAMAGE</span><h3>Investigate both sides</h3><p>Preserve timestamps, before-and-after images, blemish records and communications without automatically assigning blame.</p></article>
-          </div>
-        </section>
-
-        <section class="admin-view" data-admin-section="audit">
-          <div class="audit-list">
-            <div><span>09:42:18 · Today</span><strong>Detailer application opened</strong><span>admin.owner · Sam Patel</span></div>
-            <div><span>09:37:04 · Today</span><strong>Booking VX-2048 assigned</strong><span>system.matcher · Jordan M.</span></div>
-            <div><span>09:31:52 · Today</span><strong>Support case SUP-118 created</strong><span>customer · VX-2044</span></div>
-            <div><span>09:18:11 · Today</span><strong>Price policy v1 read</strong><span>booking.service · VX-2048</span></div>
-            <div><span>08:55:43 · Today</span><strong>Admin MFA verified</strong><span>reecetomo@hotmail.co.uk</span></div>
-          </div>
-        </section>
-      </main>
-    </div>
+  <body>
+    <div id="root"></div>
   </body>
 </html>
