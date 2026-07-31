@@ -1215,7 +1215,14 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
         <div className="nav-job-title"><span><VehicleArtwork bodyType={activeJob.bodyType} name={activeJob.car} /></span><div><small>{stage === "navigating" ? "NAVIGATING TO LOCATION" : "ARRIVAL CONFIRMED"}</small><strong>{activeJob.location}</strong><p>{activeJob.car} · {activeJob.type}</p></div><b>£{formatMoney(activeJob.payout)}</b></div>
         <div className="customer-notified"><span>✓</span><div><strong>Customer notified</strong><small>Approximate ETA: {activeJob.eta} · cross-checked with today’s schedule</small></div></div>
         <div className="nav-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=OX1%201XX" target="_blank" rel="noreferrer">Open Google Maps</a><a href="https://www.waze.com/ul?q=OX1%201XX&navigate=yes" target="_blank" rel="noreferrer">Open Waze</a></div>
-        <label className="arrival-slider"><span>{arrival >= 100 ? "Arrived ✓" : "Slide when you arrive"}</span><input aria-label="Slide to confirm arrival" type="range" min="0" max="100" value={arrival} onChange={(event) => { const value = Number(event.target.value); setArrival(value); if (value >= 100) window.setTimeout(() => setStage("before"), 250); }} /></label>
+        <label
+          className={`arrival-slider ${arrival >= 100 ? "complete" : ""}`}
+          style={{ "--arrival-progress": `${arrival}%` } as React.CSSProperties}
+        >
+          <span>{arrival >= 100 ? "Arrival confirmed" : "Slide to confirm arrival"}</span>
+          <i aria-hidden="true" style={{ left: `${arrival}%`, transform: `translateX(-${arrival}%)` }}>{arrival >= 100 ? "✓" : "→"}</i>
+          <input aria-label="Slide to confirm arrival" aria-valuetext={arrival >= 100 ? "Arrival confirmed" : `${arrival}% complete`} type="range" min="0" max="100" value={arrival} onChange={(event) => { const value = Number(event.target.value); setArrival(value); if (value >= 100) window.setTimeout(() => setStage("before"), 250); }} />
+        </label>
       </>}
     </section>
   </div>;
