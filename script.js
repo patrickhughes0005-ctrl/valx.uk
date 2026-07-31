@@ -5,7 +5,7 @@ const roles = {
     label: "Customer",
     eyebrow: "BOOK A DETAIL",
     title: "Range Rover Evoque",
-    detail: "RE22 CEX · SUV · Benson OX10",
+    detail: "RE22 CEX · SUV · customer-selected address",
     value: "£84.49",
     valueLabel: "locked total",
     action: "Review booking",

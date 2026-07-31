@@ -45,8 +45,8 @@ a { color: inherit; text-decoration: none; }
 }
 .demo-brand { display: flex; align-items: center; gap: 10px; font: 800 17px "Manrope", sans-serif; }
 .mark {
-  width: 31px; height: 31px; display: grid; place-items: center;
-  border-radius: 9px; background: var(--orange); color: #2b1709; font-weight: 900;
+  width: 38px; height: 38px; display: block;
+  border-radius: 11px; object-fit: cover;
 }
 .demo-meta { display: flex; align-items: center; gap: 12px; }
 .demo-pill {
