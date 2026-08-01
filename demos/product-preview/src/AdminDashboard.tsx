@@ -98,6 +98,7 @@ const listData: Partial<Record<Section, RecordItem[]>> = { detailers, customers,
 
 export default function AdminDashboard({ signedInEmail, signOutHref }: { signedInEmail: string; signOutHref: string }) {
   const [section, setSection] = useState<Section>("overview");
+  const [navOpen, setNavOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<RecordItem | null>(null);
   const [completedActions, setCompletedActions] = useState<string[]>([]);
@@ -142,8 +143,9 @@ export default function AdminDashboard({ signedInEmail, signOutHref }: { signedI
     <main className="admin-shell">
       <aside className="sidebar">
         <div className="brand"><img src="/valx-logo.png" alt="ValX" /><div><strong>ValX</strong><small>ADMIN CONTROL</small></div></div>
-        <nav>
-          {navGroups.map((group) => <div className="nav-group" key={group.title}><p>{group.title}</p>{group.items.map((item) => <button className={section === item ? "active" : ""} key={item} onClick={() => { setSection(item); setSelected(null); setQuery(""); }}><b>{sectionMeta[item].short}</b><span>{sectionMeta[item].label}</span>{item === "issues" && <em>2</em>}</button>)}</div>)}
+        <button className="mobile-nav-toggle" type="button" aria-controls="admin-navigation" aria-expanded={navOpen} onClick={() => setNavOpen((current) => !current)}><span>{sectionMeta[section].label}</span><b>{navOpen ? "×" : "☰"}</b></button>
+        <nav id="admin-navigation" className={navOpen ? "open" : ""}>
+          {navGroups.map((group) => <div className="nav-group" key={group.title}><p>{group.title}</p>{group.items.map((item) => <button aria-label={sectionMeta[item].label} className={section === item ? "active" : ""} key={item} onClick={() => { setSection(item); setSelected(null); setQuery(""); setNavOpen(false); }}><b>{sectionMeta[item].short}</b><span>{sectionMeta[item].label}</span>{item === "issues" && <em>2</em>}</button>)}</div>)}
         </nav>
         <div className="signed-in"><span>RT</span><div><strong>Owner</strong><small>{signedInEmail}</small></div><a href={signOutHref}>Sign out</a></div>
       </aside>

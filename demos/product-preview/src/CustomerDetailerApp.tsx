@@ -352,6 +352,19 @@ export default function Home({
   const [confirmedQuote, setConfirmedQuote] = useState<ReturnType<typeof calculateQuote> | null>(null);
   const [showPolicies, setShowPolicies] = useState(false);
 
+  useEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".customer-shell");
+    const resetShellPosition = () => {
+      if (!shell) return;
+      shell.scrollTop = 0;
+      shell.scrollLeft = 0;
+    };
+
+    resetShellPosition();
+    const frame = window.requestAnimationFrame(resetShellPosition);
+    return () => window.cancelAnimationFrame(frame);
+  }, [flow, matched, sheet, tab]);
+
   const car = vehicles[Math.min(vehicle, vehicles.length - 1)];
   const clean = SERVICES[service];
   const marketValeters = VALETERS;
@@ -811,7 +824,7 @@ export default function Home({
   };
 
   return (
-    <main className="app-shell">
+    <main className="app-shell customer-shell">
       <div className="ambient one" /><div className="ambient two" />
       <section className="phone" aria-label="ValX customer app proof of concept">
         <div className="status"><span>9:41</span><span>▮▮▮ ᯤ 93</span></div>

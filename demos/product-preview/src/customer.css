@@ -865,8 +865,16 @@ button:focus-visible,input:focus-visible { outline:2px solid var(--lime); outlin
 .payout-banner>span { font-size:15px!important; }
 
 @media(max-width:520px) {
-  .app-shell { padding:0; background:var(--bg); }
-  .phone { width:100%; height:100dvh; min-height:620px; border-radius:0; box-shadow:none; }
+  .app-shell { width:100%; height:100dvh; min-height:100dvh; max-height:100dvh; padding:0; overflow:clip; overscroll-behavior:none; background:var(--bg); }
+  .phone { width:100%; height:100dvh; min-height:0; border-radius:0; box-shadow:none; }
+  .flow-head { height:80px; padding:19px 16px 9px; grid-template-columns:48px 1fr 48px; }
+  .flow-head button,.sheet-title>button,.account-edit-sheet>header>button,.job-process>header button,.job-detail-view>header button,.financial-document>header button { width:44px; height:44px; }
+  .avatar,.detailer-top>button { width:44px; height:44px; }
+  .section-head button,.market-list>article>div>button,.times button,.picker button,.change-detailer,.review-list .review-change,.map-confirm>button,.nav-actions a,.service-prices>button,.master-hours-card>button,.day-agenda>header>button,.agenda-actions button,.agenda-actions .completed-booking,.working-day-picker button,.clear-override,.document-action { min-height:44px; }
+  .calendar-card>header button { width:44px; height:44px; }
+  .switch { width:48px; height:30px; }
+  .switch i { width:24px; height:24px; }
+  .switch.on i { transform:translateX(18px); }
 }
 @media(max-height:730px) and (min-width:521px) { .phone { height:calc(100vh - 24px); min-height:0; } }
 @media(prefers-reduced-motion:reduce) { * { animation-duration:.01ms!important; animation-iteration-count:1!important; } }

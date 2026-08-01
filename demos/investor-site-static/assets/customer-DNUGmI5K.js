@@ -1,1 +1,0 @@
-import{c as e,j as t,r as o}from"./client-BnsUgxtu.js";import{H as r}from"./customer-C_-ZQabL.js";e.createRoot(document.getElementById("root")).render(t.jsx(o.StrictMode,{children:t.jsx(r,{initialRole:"customer"})}));
