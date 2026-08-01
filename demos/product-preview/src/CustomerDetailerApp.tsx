@@ -1193,6 +1193,16 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
     if (arrivalTimerRef.current !== null) window.clearTimeout(arrivalTimerRef.current);
     arrivalTimerRef.current = window.setTimeout(() => setStage("before"), 320);
   };
+  const paintArrivalProgress = (next: number) => {
+    const track = arrivalTrackRef.current;
+    if (!track) return;
+    track.style.setProperty("--arrival-progress", `${next}%`);
+    const thumb = track.querySelector<HTMLButtonElement>(".arrival-thumb");
+    if (!thumb) return;
+    thumb.style.left = `calc(${next}% + ${6 - next * 0.66}px)`;
+    thumb.setAttribute("aria-valuenow", String(Math.round(next)));
+    thumb.setAttribute("aria-valuetext", `${Math.round(next)}% complete`);
+  };
   const updateArrivalDrag = (clientX: number) => {
     const track = arrivalTrackRef.current;
     if (!track) return;
@@ -1200,7 +1210,7 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
     const delta = ((clientX - arrivalStartXRef.current) / travel) * 100;
     const next = Math.max(0, Math.min(100, arrivalStartValueRef.current + delta));
     arrivalValueRef.current = next;
-    setArrival(next);
+    paintArrivalProgress(next);
   };
   const finishArrivalDrag = (target: HTMLButtonElement, pointerId: number) => {
     if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
@@ -1211,10 +1221,19 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
     }
     arrivalValueRef.current = 0;
     setArrival(0);
+    window.requestAnimationFrame(() => paintArrivalProgress(0));
+  };
+  const cancelArrivalDrag = (target: HTMLButtonElement, pointerId: number) => {
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+    setArrivalDragging(false);
+    arrivalValueRef.current = 0;
+    setArrival(0);
+    window.requestAnimationFrame(() => paintArrivalProgress(0));
   };
 
   useEffect(() => {
     arrivalValueRef.current = arrival;
+    paintArrivalProgress(arrival);
   }, [arrival]);
 
   useEffect(() => () => {
@@ -1299,7 +1318,7 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
               updateArrivalDrag(event.clientX);
             }}
             onPointerUp={(event) => finishArrivalDrag(event.currentTarget, event.pointerId)}
-            onPointerCancel={(event) => finishArrivalDrag(event.currentTarget, event.pointerId)}
+            onPointerCancel={(event) => cancelArrivalDrag(event.currentTarget, event.pointerId)}
             onKeyDown={(event) => {
               let next = arrivalValueRef.current;
               if (event.key === "ArrowRight" || event.key === "ArrowUp") next = Math.min(100, next + 10);
