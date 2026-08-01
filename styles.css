@@ -330,15 +330,18 @@ footer small { justify-self:end; color:#565d57; }
 @media(max-width:760px) {
   .nav { grid-template-columns:1fr auto; }
   .nav-links { display:none; }
+  .nav-cta { min-height:44px; display:flex; align-items:center; }
   .hero { min-height:unset; padding-top:70px; }
   .hero h1 { font-size:50px; }
   .hero-visual { min-height:585px; transform:scale(.92); margin:-20px -20px; }
+  .role-tabs button,.phone-total button,.large-tabs button { min-height:44px; }
   .float-card.pay-card { right:0; }
   .float-card.trust-card { left:0; }
   .signal-strip { grid-template-columns:1fr 1fr; }
   .signal-strip>div:nth-child(2) { border-right:0; }
   .signal-strip>div:nth-child(-n+2) { border-bottom:1px solid var(--line); }
-  .section { padding:95px 0; }
+  .section { padding:84px 0; }
+  .experience-grid article>button { min-height:44px; padding:0 4px; display:flex; align-items:center; }
   .walkthrough-head { align-items:flex-start; flex-direction:column; }
   .large-tabs { width:100%; }
   .large-tabs button { min-width:0; flex:1; }
@@ -354,11 +357,27 @@ footer small { justify-self:end; color:#565d57; }
 }
 @media(max-width:470px) {
   .hero h1 { font-size:42px; }
-  .hero-visual { overflow:hidden; transform:scale(.82); margin:-65px -42px; }
+  .hero-visual { min-height:520px; overflow:hidden; transform:scale(.82); transform-origin:top center; margin:-35px -42px -75px; }
+  .role-tabs button,.phone-total button { min-height:54px; }
   .signal-strip>div { min-height:105px; padding:18px; }
+  .section { padding:70px 0; }
   .section-heading h2,.walkthrough-head h2,.model h2,.partner-section h2,.closing h2 { font-size:34px; }
-  .journey-preview { padding:24px; }
+  .experience-grid { margin-top:38px; }
+  .experience-grid article { min-height:0; padding:24px; }
+  .experience-grid .eyebrow { margin-top:42px; }
+  .walkthrough { padding:72px 20px; }
+  .journey-grid { margin-top:36px; }
+  .journey-list button { min-height:88px; }
+  .journey-preview { min-height:340px; padding:24px; }
   .preview-symbol { margin-top:32px; }
+  .progress-grid { margin-top:38px; }
+  .progress-grid article { min-height:0; padding:24px; }
+  .progress-grid h3 { margin:25px 0 16px; }
+  .partner-section { padding-top:70px; padding-bottom:70px; }
+  .partner-list { margin-top:36px; }
+  .partner-list article { min-height:0; }
+  .partner-list h3 { margin:30px 0 12px; }
+  .closing { min-height:440px; padding:80px 20px; }
   .split-labels { grid-template-columns:1fr; }
 }
 @media(prefers-reduced-motion:reduce) {
