@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Tab = "garage" | "services" | "history" | "account";
 type Flow = null | "service" | "browse" | "profile" | "plan" | "method" | "priority" | "prebook" | "matching" | "review" | "complete";
@@ -1016,6 +1016,12 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
   const [jobNotice, setJobNotice] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [arrival, setArrival] = useState(0);
+  const [arrivalDragging, setArrivalDragging] = useState(false);
+  const arrivalTrackRef = useRef<HTMLDivElement>(null);
+  const arrivalValueRef = useRef(0);
+  const arrivalStartXRef = useRef(0);
+  const arrivalStartValueRef = useRef(0);
+  const arrivalTimerRef = useRef<number | null>(null);
   const [beforePhotos, setBeforePhotos] = useState(0);
   const [afterPhotos, setAfterPhotos] = useState(0);
   const [blemishLogged, setBlemishLogged] = useState(false);
@@ -1181,6 +1187,40 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
       setAccepting(false);
     }
   };
+  const confirmArrival = () => {
+    arrivalValueRef.current = 100;
+    setArrival(100);
+    if (arrivalTimerRef.current !== null) window.clearTimeout(arrivalTimerRef.current);
+    arrivalTimerRef.current = window.setTimeout(() => setStage("before"), 320);
+  };
+  const updateArrivalDrag = (clientX: number) => {
+    const track = arrivalTrackRef.current;
+    if (!track) return;
+    const travel = Math.max(track.getBoundingClientRect().width - 66, 1);
+    const delta = ((clientX - arrivalStartXRef.current) / travel) * 100;
+    const next = Math.max(0, Math.min(100, arrivalStartValueRef.current + delta));
+    arrivalValueRef.current = next;
+    setArrival(next);
+  };
+  const finishArrivalDrag = (target: HTMLButtonElement, pointerId: number) => {
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+    setArrivalDragging(false);
+    if (arrivalValueRef.current >= 84) {
+      confirmArrival();
+      return;
+    }
+    arrivalValueRef.current = 0;
+    setArrival(0);
+  };
+
+  useEffect(() => {
+    arrivalValueRef.current = arrival;
+  }, [arrival]);
+
+  useEffect(() => () => {
+    if (arrivalTimerRef.current !== null) window.clearTimeout(arrivalTimerRef.current);
+  }, []);
+
   const finishAndReset = (nextId?: number) => {
     if (nextId) setSelectedId(nextId);
     setActiveId(null);
@@ -1228,14 +1268,52 @@ function DetailerApp({ profile, specialist, vatRegistered, vatNumber, payoutBank
         <div className="nav-job-title"><span><VehicleArtwork bodyType={activeJob.bodyType} name={activeJob.car} /></span><div><small>{stage === "navigating" ? "NAVIGATING TO LOCATION" : "ARRIVAL CONFIRMED"}</small><strong>{activeJob.location}</strong><p>{activeJob.car} · {activeJob.type}</p></div><b>£{formatMoney(activeJob.payout)}</b></div>
         <div className="customer-notified"><span>✓</span><div><strong>Customer notified</strong><small>Approximate ETA: {activeJob.eta} · cross-checked with today’s schedule</small></div></div>
         <div className="nav-actions"><a href="https://www.google.com/maps/dir/?api=1&destination=OX1%201XX" target="_blank" rel="noreferrer">Open Google Maps</a><a href="https://www.waze.com/ul?q=OX1%201XX&navigate=yes" target="_blank" rel="noreferrer">Open Waze</a></div>
-        <label
-          className={`arrival-slider ${arrival >= 100 ? "complete" : ""}`}
+        <div
+          ref={arrivalTrackRef}
+          className={`arrival-slider ${arrivalDragging ? "dragging" : ""} ${arrival >= 100 ? "complete" : ""}`}
           style={{ "--arrival-progress": `${arrival}%` } as React.CSSProperties}
         >
-          <span>{arrival >= 100 ? "Arrival confirmed" : "Slide to confirm arrival"}</span>
-          <i aria-hidden="true" style={{ left: `${arrival}%`, transform: `translateX(-${arrival}%)` }}>{arrival >= 100 ? "✓" : "→"}</i>
-          <input aria-label="Slide to confirm arrival" aria-valuetext={arrival >= 100 ? "Arrival confirmed" : `${arrival}% complete`} type="range" min="0" max="100" value={arrival} onChange={(event) => { const value = Number(event.target.value); setArrival(value); if (value >= 100) window.setTimeout(() => setStage("before"), 250); }} />
-        </label>
+          <span>{arrival >= 100 ? "Arrival confirmed" : arrivalDragging ? "Keep sliding →" : "Slide to confirm arrival"}</span>
+          <button
+            className="arrival-thumb"
+            type="button"
+            role="slider"
+            aria-label="Slide to confirm arrival"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(arrival)}
+            aria-valuetext={arrival >= 100 ? "Arrival confirmed" : `${Math.round(arrival)}% complete`}
+            disabled={arrival >= 100}
+            style={{ left: `calc(${arrival}% + ${6 - arrival * 0.66}px)` }}
+            onPointerDown={(event) => {
+              if (arrival >= 100) return;
+              event.preventDefault();
+              arrivalStartXRef.current = event.clientX;
+              arrivalStartValueRef.current = arrivalValueRef.current;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setArrivalDragging(true);
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+              event.preventDefault();
+              updateArrivalDrag(event.clientX);
+            }}
+            onPointerUp={(event) => finishArrivalDrag(event.currentTarget, event.pointerId)}
+            onPointerCancel={(event) => finishArrivalDrag(event.currentTarget, event.pointerId)}
+            onKeyDown={(event) => {
+              let next = arrivalValueRef.current;
+              if (event.key === "ArrowRight" || event.key === "ArrowUp") next = Math.min(100, next + 10);
+              else if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = Math.max(0, next - 10);
+              else if (event.key === "Home") next = 0;
+              else if (event.key === "End") next = 100;
+              else return;
+              event.preventDefault();
+              arrivalValueRef.current = next;
+              if (next >= 100) confirmArrival();
+              else setArrival(next);
+            }}
+          >{arrival >= 100 ? "✓" : "→"}</button>
+        </div>
       </>}
     </section>
   </div>;
