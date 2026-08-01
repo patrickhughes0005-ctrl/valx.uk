@@ -1,0 +1,1 @@
+import{c as e,j as t,r}from"./client-BnsUgxtu.js";import{H as o}from"./customer-BP2xwNef.js";e.createRoot(document.getElementById("root")).render(t.jsx(r.StrictMode,{children:t.jsx(o,{initialRole:"detailer"})}));
