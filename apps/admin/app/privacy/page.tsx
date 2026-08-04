@@ -23,9 +23,10 @@ export default function PrivacyPage() {
         We use account and contact details, saved vehicles and registration
         numbers, service addresses, water availability, booking selections,
         journey status, support messages and security records. Detailer
-        onboarding additionally uses service radius, water-supply and VAT
-        information. Identity, insurance, bank and job-evidence features are
-        introduced only when the relevant secured service is enabled.
+        onboarding additionally uses trading details, service radius,
+        water-supply and VAT information, a right-to-work declaration, photo
+        identity and insurance documents. Bank details are not collected and
+        payments remain disconnected in the private beta.
       </p>
 
       <h2>Why we use it</h2>

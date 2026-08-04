@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import DetailerOnboardingAdmin from "./detailer-onboarding-admin";
 
 type Section = "overview" | "detailers" | "customers" | "payments" | "payouts" | "jobs" | "finance" | "issues" | "documents" | "data" | "reconciliation" | "policies" | "audit" | "team";
 type RecordItem = { id: string; title: string; subtitle: string; meta: string; amount?: string; status: string; tone?: "good" | "warn" | "bad" | "neutral"; detail: string };
@@ -96,7 +97,7 @@ const navGroups: { title: string; items: Section[] }[] = [
 
 const listData: Partial<Record<Section, RecordItem[]>> = { detailers, customers, payments, payouts, jobs, issues, documents, data: dataRequests, reconciliation, audit: auditLog };
 
-export default function AdminDashboard({ signedInEmail, onSignOut }: { signedInEmail: string; onSignOut: () => void | Promise<void> }) {
+export default function AdminDashboard({ signedInEmail, sessionToken, apiUrl, onSignOut }: { signedInEmail: string; sessionToken: string; apiUrl: string; onSignOut: () => void | Promise<void> }) {
   const [section, setSection] = useState<Section>("overview");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<RecordItem | null>(null);
@@ -119,7 +120,8 @@ export default function AdminDashboard({ signedInEmail, onSignOut }: { signedInE
     };
   }, [onSignOut]);
 
-  const records = listData[section] ?? [];
+  const liveDetailerSection = section === "detailers" || section === "documents";
+  const records = liveDetailerSection ? [] : listData[section] ?? [];
   const filtered = useMemo(() => records.filter((item) => `${item.id} ${item.title} ${item.subtitle} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [records, query]);
 
   const exportRows = () => {
@@ -150,7 +152,7 @@ export default function AdminDashboard({ signedInEmail, onSignOut }: { signedInE
 
       <section className="workspace">
         <div className="prototype-banner">
-          Private UI reference · sample records only · no live payment provider
+          Live detailer onboarding controls - payments remain disconnected - other dashboard sections contain sample records
         </div>
         <header className="workspace-head">
           <div><p>{sectionMeta[section].description}</p><h1>{sectionMeta[section].label}</h1></div>
@@ -161,6 +163,7 @@ export default function AdminDashboard({ signedInEmail, onSignOut }: { signedInE
         {section === "finance" && <Finance />}
         {section === "policies" && <Policies />}
         {section === "team" && <TeamAccess admins={admins} setAdmins={setAdmins} pending={pendingAdmins} approve={approveAdmin} />}
+        {liveDetailerSection && <DetailerOnboardingAdmin apiUrl={apiUrl} token={sessionToken} />}
         {records.length > 0 && <RecordSection section={section} records={filtered} query={query} setQuery={setQuery} onSelect={setSelected} onExport={exportRows} completedActions={completedActions} />}
       </section>
 

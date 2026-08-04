@@ -16,4 +16,5 @@ apps/*/.env
 packages/*/.env
 .wrangler/
 .site-worktree/
+.private/
 demos/investor-site/

@@ -139,6 +139,8 @@ export default function AdminAuthGate({ apiUrl }: { apiUrl: string }) {
     return (
       <AdminDashboard
         signedInEmail={session.user.email}
+        sessionToken={session.token}
+        apiUrl={apiUrl}
         onSignOut={signOut}
       />
     );

@@ -20,6 +20,7 @@
     "@valx/brand": "workspace:*",
     "@valx/pricing-policy": "workspace:*",
     "expo": "^57.0.0",
+    "expo-document-picker": "~57.0.1",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "^3.0.0",
     "react": "19.2.3",

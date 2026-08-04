@@ -4,12 +4,18 @@ import { loadConfig } from "../src/config";
 import { CaptureAuthEmailDelivery } from "../src/email";
 import { createMemoryRepository } from "../src/repository";
 import { hashPassword } from "../src/security";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const documentStoragePath = await mkdtemp(join(tmpdir(), "valx-api-test-"));
 
 const config = loadConfig({
   NODE_ENV: "test",
   BETA_REGISTRATION_MODE: "open",
   DVLA_MODE: "mock",
-  GOOGLE_MAPS_MODE: "mock"
+  GOOGLE_MAPS_MODE: "mock",
+  DOCUMENT_STORAGE_PATH: documentStoragePath
 });
 const emailDelivery = new CaptureAuthEmailDelivery();
 const repository = createMemoryRepository();
@@ -56,6 +62,20 @@ const latestAdminMfaCode = (to: string) => {
   return message.code;
 };
 
+const latestDetailerInvitationToken = (to: string) => {
+  const message = emailDelivery.messages.findLast(
+    (candidate) => candidate.to === to && candidate.kind === "detailer_invite"
+  );
+  if (!message || message.kind !== "detailer_invite") {
+    throw new Error(`Missing detailer invitation email for ${to}`);
+  }
+  const actionUrl = new URL(message.actionUrl);
+  const invitationUrl = new URL(actionUrl.hash.slice(1), "https://valx.test");
+  const token = invitationUrl.searchParams.get("token");
+  if (!token) throw new Error(`Missing detailer invitation token for ${to}`);
+  return token;
+};
+
 const verifyLatestRegistration = async (email: string) =>
   app.inject({
     method: "POST",
@@ -64,7 +84,10 @@ const verifyLatestRegistration = async (email: string) =>
   });
 
 beforeAll(async () => app.ready());
-afterAll(async () => app.close());
+afterAll(async () => {
+  await app.close();
+  await rm(documentStoragePath, { recursive: true, force: true });
+});
 
 describe("ValX API", () => {
   it("refuses production startup without real authentication email delivery", () => {
@@ -470,6 +493,156 @@ describe("ValX API", () => {
       payload: { email, code }
     });
     expect(reusedCode.statusCode).toBe(401);
+  });
+
+  it("runs secure invited detailer onboarding and administrator approval", async () => {
+    const adminEmail = "onboarding.admin@valx.test";
+    const adminPassword = "Admin-onboarding-2026";
+    const detailerEmail = "portsmouth.detailer@valx.test";
+    await repository.createAdmin({
+      email: adminEmail,
+      name: "Onboarding Admin",
+      passwordHash: await hashPassword(adminPassword)
+    });
+    await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/login",
+      payload: { email: adminEmail, password: adminPassword }
+    });
+    const mfa = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/verify-mfa",
+      payload: { email: adminEmail, code: latestAdminMfaCode(adminEmail) }
+    });
+    const adminHeaders = {
+      authorization: `Bearer ${mfa.json().token as string}`
+    };
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: "/v1/admin/detailer-invitations",
+      headers: adminHeaders,
+      payload: { email: detailerEmail }
+    });
+    expect(invitation.statusCode).toBe(201);
+    expect(invitation.json().delivery).toBe("sent");
+    const invitationToken = latestDetailerInvitationToken(detailerEmail);
+
+    const wrongRecipient = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "detailer",
+        email: "wrong-recipient@valx.test",
+        password: "Detailer-password-2026",
+        name: "Wrong Recipient",
+        phone: "07111111112",
+        invitationToken,
+        ownWaterSupply: true,
+        serviceRadiusMiles: 15,
+        vatRegistered: false
+      }
+    });
+    expect(wrongRecipient.statusCode).toBe(403);
+
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "detailer",
+        email: detailerEmail,
+        password: "Detailer-password-2026",
+        name: "Portsmouth Pilot Detailer",
+        phone: "07111111113",
+        invitationToken,
+        ownWaterSupply: true,
+        serviceRadiusMiles: 15,
+        vatRegistered: false
+      }
+    });
+    expect(registration.statusCode).toBe(201);
+    const verified = await verifyLatestRegistration(detailerEmail);
+    const detailerHeaders = {
+      authorization: `Bearer ${verified.json().token as string}`
+    };
+
+    const saved = await app.inject({
+      method: "PATCH",
+      url: "/v1/detailer/onboarding",
+      headers: detailerHeaders,
+      payload: {
+        businessName: "Portsmouth Mobile Detailing",
+        tradingAddress: "1 Pilot Road, Portsmouth",
+        operatingPostcode: "PO1 1AA",
+        experienceYears: 5,
+        ownWaterSupply: true,
+        serviceRadiusMiles: 15,
+        vatRegistered: false,
+        instagram: "portsmouth.detailing",
+        rightToWorkDeclared: true,
+        termsAccepted: true
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
+    const uploadDocument = (type: string, expiresAt?: string) =>
+      app.inject({
+        method: "POST",
+        url: `/v1/detailer/onboarding/documents?type=${type}&fileName=${type}.pdf${expiresAt ? `&expiresAt=${expiresAt}` : ""}`,
+        headers: { ...detailerHeaders, "content-type": "application/pdf" },
+        payload: pdf
+      });
+    expect((await uploadDocument("identity")).statusCode).toBe(201);
+    expect((await uploadDocument("public_liability_insurance", "2027-08-04")).statusCode).toBe(201);
+    const motorDocument = await uploadDocument("motor_insurance", "2027-09-10");
+    expect(motorDocument.statusCode).toBe(201);
+
+    const submitted = await app.inject({
+      method: "POST",
+      url: "/v1/detailer/onboarding/submit",
+      headers: detailerHeaders
+    });
+    expect(submitted.statusCode).toBe(200);
+    expect(submitted.json().onboarding.status).toBe("submitted");
+
+    const beforeApproval = await app.inject({
+      method: "GET",
+      url: "/v1/detailer/offers",
+      headers: detailerHeaders
+    });
+    expect(beforeApproval.json().offers).toHaveLength(0);
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/detailers",
+      headers: adminHeaders
+    });
+    const candidate = list.json().detailers.find(
+      (detailer: { email: string }) => detailer.email === detailerEmail
+    );
+    expect(candidate).toMatchObject({ status: "submitted", operatingPostcode: "PO1 1AA" });
+    expect(candidate.documents).toHaveLength(3);
+
+    const download = await app.inject({
+      method: "GET",
+      url: `/v1/admin/detailer-documents/${motorDocument.json().document.id}`,
+      headers: adminHeaders
+    });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["cache-control"]).toBe("no-store");
+
+    const approval = await app.inject({
+      method: "PATCH",
+      url: `/v1/admin/detailers/${candidate.userId}/review`,
+      headers: adminHeaders,
+      payload: {
+        decision: "approved",
+        notes: "Identity and both insurance policies checked for the Portsmouth pilot."
+      }
+    });
+    expect(approval.statusCode).toBe(200);
+    expect(approval.json().onboarding).toMatchObject({ status: "approved" });
   });
 
   it("queues support and account deletion, then revokes the session", async () => {

@@ -13,6 +13,12 @@ export type AuthEmailMessage =
       to: string;
       code: string;
       expiresInMinutes: number;
+    }
+  | {
+      kind: "detailer_invite";
+      to: string;
+      actionUrl: string;
+      expiresInMinutes: number;
     };
 
 export interface AuthEmailDelivery {
@@ -63,6 +69,18 @@ export const createAuthEmailDelivery = (
           subject: "Your ValX Admin sign-in code",
           text: `Your ValX Admin sign-in code is ${message.code}.\n\nIt expires in ${message.expiresInMinutes} minutes. If you did not try to sign in, contact support immediately.`,
           html: `<p>Your ValX Admin sign-in code is:</p><p style="font-size: 28px; font-weight: 700; letter-spacing: 6px">${escapeHtml(message.code)}</p><p>It expires in ${message.expiresInMinutes} minutes. If you did not try to sign in, contact support immediately.</p>`
+        });
+        return;
+      }
+
+      if (message.kind === "detailer_invite") {
+        const safeUrl = escapeHtml(message.actionUrl);
+        await transport.sendMail({
+          from: config.SMTP_FROM,
+          to: message.to,
+          subject: "Your ValX detailer invitation",
+          text: `You have been invited to join the ValX detailer pilot. Create your secure account and complete onboarding here:\n\n${message.actionUrl}\n\nThis single-use invitation expires in ${message.expiresInMinutes} minutes. Do not forward it.`,
+          html: `<p>You have been invited to join the ValX detailer pilot.</p><p><a href="${safeUrl}">Create your secure account</a></p><p>This single-use invitation expires in ${message.expiresInMinutes} minutes. Do not forward it.</p>`
         });
         return;
       }

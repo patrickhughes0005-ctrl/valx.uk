@@ -20,6 +20,7 @@ flowchart LR
   Admin["Next.js Admin\nMFA required"] --> API
   API --> Pricing["Pricing & Policy"]
   API --> DB[("PostgreSQL")]
+  API --> Documents[("Private document volume")]
   API --> DVLA["DVLA VES\nmock/live adapter"]
   API --> Places["Google Places\nmock/live adapter"]
   API --> Routes["Google Routes\nmock/live adapter"]
@@ -42,14 +43,17 @@ Camera/evidence capture and notifications remain later gates.
 
 ### `apps/admin`
 
-Next.js 16. The approved dashboard has been imported as the starting UI. Preview
-mode is deliberately explicit. A production identity provider, allowlist, MFA,
-role checks, CSRF protection, and short idle sessions are launch requirements.
+Next.js 16. The approved dashboard is the starting UI. Live detailer invitation,
+private-document review and approval use the shared API. Staging requires an
+administrator password plus single-use email MFA and a 15-minute UI idle
+timeout. Wider staff access still needs individual accounts and least-privilege
+roles rather than a shared credential.
 
 ### `apps/api`
 
 Fastify is the shared trust boundary. It exposes health, authentication,
-onboarding, server-persisted quotes, booking, detailer acceptance/status,
+onboarding, single-use detailer invitations, private onboarding documents,
+administrator review, server-persisted quotes, booking, detailer acceptance/status,
 support, deletion, policies and provider adapters. Passwords use salted scrypt;
 opaque session tokens are stored only as keyed hashes and are revocable. It has
 no payment endpoints.
@@ -78,8 +82,10 @@ no payment endpoints.
 
 ## Database boundaries
 
-The first migration includes users, detailer profiles, vehicles, addresses,
-quotes, bookings, job evidence, versioned policies, and an audit log. Payment
+The schema includes users, detailer profiles and invitations, private-document
+metadata, vehicles, addresses, quotes, bookings, job evidence, versioned
+policies, and an audit log. Document bytes live in a private server volume and
+are fetched only through an authenticated administrator route. Payment
 credentials are intentionally absent. When payments are added, only provider
 tokens and masked display values may be stored.
 

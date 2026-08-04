@@ -11,6 +11,9 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest
 } from "fastify";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { z } from "zod";
 import type { ApiConfig } from "./config.js";
 import {
@@ -83,6 +86,7 @@ const registrationInput = z.discriminatedUnion("role", [
     name: z.string().trim().min(2).max(100),
     phone: z.string().trim().min(7).max(24),
     inviteCode: z.string().optional(),
+    invitationToken: z.string().min(32).max(256).optional(),
     ownWaterSupply: z.boolean(),
     serviceRadiusMiles: z.number().int().min(3).max(50),
     vatRegistered: z.boolean(),
@@ -157,6 +161,44 @@ const deletionInput = z.object({
   reason: z.string().trim().max(1_000).optional()
 });
 
+const detailerInvitationInput = z.object({
+  email: z.string().email()
+});
+
+const detailerOnboardingInput = z.object({
+  businessName: z.string().trim().min(2).max(120),
+  tradingAddress: z.string().trim().min(8).max(240),
+  operatingPostcode: z.string().trim().min(5).max(10),
+  experienceYears: z.number().int().min(0).max(80),
+  ownWaterSupply: z.boolean(),
+  serviceRadiusMiles: z.number().int().min(3).max(50),
+  vatRegistered: z.boolean(),
+  vatNumber: z.string().trim().max(20).optional(),
+  instagram: z.string().trim().max(80).optional(),
+  rightToWorkDeclared: z.literal(true),
+  termsAccepted: z.literal(true)
+});
+
+const documentQueryInput = z.object({
+  type: z.enum(["identity", "public_liability_insurance", "motor_insurance"]),
+  fileName: z.string().trim().min(1).max(180),
+  expiresAt: z.string().date().optional()
+});
+
+const reviewInput = z.object({
+  decision: z.enum(["approved", "changes_requested", "rejected"]),
+  notes: z.string().trim().min(3).max(2_000)
+});
+
+const validDocumentSignature = (mimeType: string, body: Buffer) => {
+  if (mimeType === "application/pdf") return body.subarray(0, 5).toString() === "%PDF-";
+  if (mimeType === "image/jpeg") return body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+  if (mimeType === "image/png") {
+    return body.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  return false;
+};
+
 const publicUser = (user: UserRecord) => ({
   id: user.id,
   role: user.role,
@@ -176,6 +218,13 @@ export const createApp = async (
     bodyLimit: 64 * 1024,
     requestIdHeader: "x-request-id"
   });
+  app.addContentTypeParser(
+    ["application/pdf", "image/jpeg", "image/png"],
+    { parseAs: "buffer" },
+    (_request, body, done) => done(null, body)
+  );
+  const documentStorageRoot = resolve(config.DOCUMENT_STORAGE_PATH);
+  await mkdir(documentStorageRoot, { recursive: true, mode: 0o700 });
 
   await app.register(helmet, { global: true });
   await app.register(cors, {
@@ -380,10 +429,13 @@ export const createApp = async (
     const codeAllowed =
       Boolean(config.BETA_INVITE_CODE && input.inviteCode) &&
       constantTimeTextEqual(input.inviteCode ?? "", config.BETA_INVITE_CODE!);
+    const individualDetailerInvite =
+      input.role === "detailer" && Boolean(input.invitationToken);
     if (
       config.BETA_REGISTRATION_MODE === "invite_only" &&
       !emailAllowed &&
-      !codeAllowed
+      !codeAllowed &&
+      !individualDetailerInvite
     ) {
       return reply.code(403).send({ error: "beta_invitation_required" });
     }
@@ -394,6 +446,10 @@ export const createApp = async (
       const user = await data.createUser({
         ...input,
         email,
+        invitationTokenHash:
+          input.role === "detailer" && input.invitationToken
+            ? hashOneTimeToken(input.invitationToken, config.AUTH_TOKEN_PEPPER)
+            : undefined,
         passwordHash: await hashPassword(input.password)
       });
       const delivered = await trySendAuthEmail(user, "verify_email");
@@ -402,8 +458,11 @@ export const createApp = async (
         email: user.email,
         verificationDelivery: delivered ? "sent" : "delayed"
       });
-    } catch {
+    } catch (error) {
       request.log.info("Registration was not completed");
+      if (error instanceof Error && error.message === "invalid_detailer_invitation") {
+        return reply.code(403).send({ error: "invalid_detailer_invitation" });
+      }
       return reply.code(409).send({ error: "account_already_exists" });
     }
     }
@@ -594,6 +653,188 @@ export const createApp = async (
       hashSessionToken(token, config.AUTH_TOKEN_PEPPER)
     );
     return reply.code(204).send();
+  });
+
+  app.post(
+    "/v1/admin/detailer-invitations",
+    {
+      config: {
+        rateLimit: {
+          max: config.NODE_ENV === "test" ? 10_000 : 10,
+          timeWindow: "1 hour"
+        }
+      }
+    },
+    async (request, reply) => {
+      const admin = await authenticatedUser(request, reply, ["admin"]);
+      if (!admin) return;
+      const parsed = detailerInvitationInput.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ error: "invalid_detailer_invitation" });
+      const email = normaliseEmail(parsed.data.email);
+      const token = createOneTimeToken();
+      const expiresInMinutes = 7 * 24 * 60;
+      const invitation = await data.createDetailerInvitation({
+        email,
+        tokenHash: hashOneTimeToken(token, config.AUTH_TOKEN_PEPPER),
+        invitedBy: admin.id,
+        expiresAt: new Date(Date.now() + expiresInMinutes * 60 * 1_000)
+      });
+      const actionUrl = new URL(config.PUBLIC_APP_URL);
+      actionUrl.hash = `/detailer-invite?token=${encodeURIComponent(token)}`;
+      let delivery: "sent" | "delayed" = "sent";
+      try {
+        await authEmail.send({
+          kind: "detailer_invite",
+          to: email,
+          actionUrl: actionUrl.toString(),
+          expiresInMinutes
+        });
+      } catch {
+        delivery = "delayed";
+        request.log.error("Detailer invitation email delivery failed");
+      }
+      return reply.code(201).send({ invitation, delivery });
+    }
+  );
+
+  app.get("/v1/detailer/onboarding", async (request, reply) => {
+    const detailer = await authenticatedUser(request, reply, ["detailer"]);
+    if (!detailer) return;
+    const onboarding = await data.getDetailerOnboarding(detailer.id);
+    if (!onboarding) return reply.code(404).send({ error: "detailer_onboarding_not_found" });
+    return { onboarding };
+  });
+
+  app.patch("/v1/detailer/onboarding", async (request, reply) => {
+    const detailer = await authenticatedUser(request, reply, ["detailer"]);
+    if (!detailer) return;
+    const parsed = detailerOnboardingInput.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_detailer_onboarding", details: parsed.error.flatten() });
+    }
+    if (parsed.data.vatRegistered && !parsed.data.vatNumber) {
+      return reply.code(400).send({ error: "vat_number_required" });
+    }
+    const onboarding = await data.updateDetailerOnboarding(detailer.id, parsed.data);
+    if (!onboarding) return reply.code(409).send({ error: "detailer_onboarding_locked" });
+    return { onboarding };
+  });
+
+  app.post(
+    "/v1/detailer/onboarding/documents",
+    {
+      bodyLimit: config.DOCUMENT_MAX_BYTES,
+      config: {
+        rateLimit: {
+          max: config.NODE_ENV === "test" ? 10_000 : 15,
+          timeWindow: "1 hour"
+        }
+      }
+    },
+    async (request, reply) => {
+      const detailer = await authenticatedUser(request, reply, ["detailer"]);
+      if (!detailer) return;
+      const parsed = documentQueryInput.safeParse(request.query);
+      const mimeType = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
+      const body = request.body;
+      if (!parsed.success || !mimeType || !Buffer.isBuffer(body) || body.length === 0) {
+        return reply.code(400).send({ error: "invalid_detailer_document" });
+      }
+      if (body.length > config.DOCUMENT_MAX_BYTES || !validDocumentSignature(mimeType, body)) {
+        return reply.code(415).send({ error: "unsupported_detailer_document" });
+      }
+      if (parsed.data.type !== "identity" && !parsed.data.expiresAt) {
+        return reply.code(400).send({ error: "insurance_expiry_required" });
+      }
+      const extension = mimeType === "application/pdf" ? ".pdf" : mimeType === "image/png" ? ".png" : ".jpg";
+      const storageKey = `${randomUUID()}${extension}`;
+      const target = resolve(documentStorageRoot, storageKey);
+      if (!target.startsWith(`${documentStorageRoot}\\`) && !target.startsWith(`${documentStorageRoot}/`)) {
+        return reply.code(400).send({ error: "invalid_detailer_document" });
+      }
+      await writeFile(target, body, { flag: "wx", mode: 0o600 });
+      try {
+        const document = await data.addDetailerDocument({
+          detailerId: detailer.id,
+          type: parsed.data.type,
+          originalName: parsed.data.fileName,
+          mimeType,
+          sizeBytes: body.length,
+          sha256: createHash("sha256").update(body).digest("hex"),
+          storageKey,
+          expiresAt: parsed.data.expiresAt ? new Date(`${parsed.data.expiresAt}T23:59:59.999Z`) : undefined
+        });
+        return reply.code(201).send({ document });
+      } catch (error) {
+        await unlink(target).catch(() => undefined);
+        if (error instanceof Error && error.message === "detailer_onboarding_locked") {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    }
+  );
+
+  app.post("/v1/detailer/onboarding/submit", async (request, reply) => {
+    const detailer = await authenticatedUser(request, reply, ["detailer"]);
+    if (!detailer) return;
+    try {
+      const onboarding = await data.submitDetailerOnboarding(detailer.id);
+      if (!onboarding) return reply.code(409).send({ error: "detailer_onboarding_locked" });
+      return { onboarding };
+    } catch (error) {
+      if (error instanceof Error && error.message === "detailer_onboarding_incomplete") {
+        return reply.code(400).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get("/v1/admin/detailers", async (request, reply) => {
+    const admin = await authenticatedUser(request, reply, ["admin"]);
+    if (!admin) return;
+    return { detailers: await data.listAdminDetailers() };
+  });
+
+  app.patch("/v1/admin/detailers/:detailerId/review", async (request, reply) => {
+    const admin = await authenticatedUser(request, reply, ["admin"]);
+    if (!admin) return;
+    const params = z.object({ detailerId: z.string().uuid() }).safeParse(request.params);
+    const parsed = reviewInput.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      return reply.code(400).send({ error: "invalid_detailer_review" });
+    }
+    const onboarding = await data.reviewDetailerOnboarding({
+      detailerId: params.data.detailerId,
+      adminId: admin.id,
+      ...parsed.data
+    });
+    if (!onboarding) return reply.code(409).send({ error: "detailer_not_ready_for_review" });
+    return { onboarding };
+  });
+
+  app.get("/v1/admin/detailer-documents/:documentId", async (request, reply) => {
+    const admin = await authenticatedUser(request, reply, ["admin"]);
+    if (!admin) return;
+    const params = z.object({ documentId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_detailer_document" });
+    const document = await data.findDetailerDocumentForAdmin(params.data.documentId);
+    if (!document) return reply.code(404).send({ error: "detailer_document_not_found" });
+    const target = resolve(documentStorageRoot, document.storageKey);
+    if (!target.startsWith(`${documentStorageRoot}\\`) && !target.startsWith(`${documentStorageRoot}/`)) {
+      return reply.code(404).send({ error: "detailer_document_not_found" });
+    }
+    try {
+      const body = await readFile(target);
+      const safeName = document.originalName.replace(/[^a-zA-Z0-9._ -]/g, "_");
+      return reply
+        .header("content-type", document.mimeType)
+        .header("content-disposition", `attachment; filename="${safeName}"`)
+        .header("cache-control", "no-store")
+        .send(body);
+    } catch {
+      return reply.code(404).send({ error: "detailer_document_not_found" });
+    }
   });
 
   app.get("/v1/public/privacy", async () => ({

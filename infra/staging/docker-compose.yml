@@ -37,6 +37,8 @@ services:
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:?required}
       PUBLIC_APP_URL: ${STAGING_APP_URL:?required}
       ADMIN_APP_URL: ${STAGING_ADMIN_URL:?required}
+      DOCUMENT_STORAGE_PATH: /var/lib/valx/detailer-documents
+      DOCUMENT_MAX_BYTES: 5242880
       AUTH_EMAIL_MODE: ${AUTH_EMAIL_MODE:?required}
       SMTP_HOST: ${SMTP_HOST:?required}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -55,6 +57,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:4000:4000"
+    volumes:
+      - valx_staging_documents:/var/lib/valx/detailer-documents
     healthcheck:
       test:
         [
@@ -102,3 +106,4 @@ services:
 
 volumes:
   valx_staging_postgres:
+  valx_staging_documents:

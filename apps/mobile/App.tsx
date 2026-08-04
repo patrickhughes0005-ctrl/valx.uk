@@ -5,6 +5,7 @@ import {
   type VehicleType
 } from "@valx/pricing-policy";
 import { StatusBar } from "expo-status-bar";
+import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,10 +21,12 @@ import {
   TextInput,
   View
 } from "react-native";
-import { api, ApiError, session } from "./src/api";
+import { api, ApiError, session, uploadDetailerDocument } from "./src/api";
 import type {
   Address,
   Booking,
+  DetailerDocument,
+  DetailerOnboarding,
   Quote,
   Role,
   User,
@@ -47,6 +50,10 @@ const errorCopy: Record<string, string> = {
   invalid_or_expired_session: "Your session has expired. Please sign in again.",
   booking_reference_invalid: "Your quote expired. Please create a new quote.",
   booking_no_longer_available: "Another detailer has accepted this job.",
+  invalid_detailer_invitation: "That detailer invitation is invalid, expired or has already been used.",
+  detailer_onboarding_incomplete: "Complete every business field, declaration and required document before submitting.",
+  unsupported_detailer_document: "Use a genuine PDF, JPEG or PNG file no larger than 5 MB.",
+  insurance_expiry_required: "Add the insurance policy expiry date before uploading.",
   request_failed: "ValX could not complete that request. Please try again."
 };
 
@@ -164,6 +171,7 @@ function AuthScreen({
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [invitationToken, setInvitationToken] = useState("");
   const [actionToken, setActionToken] = useState("");
   const [water, setWater] = useState(true);
   const [vatRegistered, setVatRegistered] = useState(false);
@@ -182,6 +190,12 @@ function AuthScreen({
           : parsed;
         const token = action.searchParams.get("token");
         if (!token) return;
+        if (action.pathname.includes("detailer-invite")) {
+          setInvitationToken(token);
+          setRole("detailer");
+          setMode("create");
+          return;
+        }
         setActionToken(token);
         setMode(action.pathname.includes("reset-password") ? "reset" : "verify");
       } catch {
@@ -264,6 +278,7 @@ function AuthScreen({
                   phone,
                   password,
                   inviteCode,
+                  invitationToken,
                   ownWaterSupply: water,
                   serviceRadiusMiles: 12,
                   vatRegistered,
@@ -352,12 +367,19 @@ function AuthScreen({
             onChangeText={setPhone}
             keyboardType="phone-pad"
           />
-          <Field
-            label="Invitation code"
-            value={inviteCode}
-            onChangeText={setInviteCode}
-            autoCapitalize="characters"
-          />
+          {invitationToken ? (
+            <View style={styles.policyCard}>
+              <Text style={styles.eyebrow}>SECURE INVITATION ATTACHED</Text>
+              <Text style={styles.small}>This single-use link is tied to the invited detailer email address.</Text>
+            </View>
+          ) : (
+            <Field
+              label="Invitation code"
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              autoCapitalize="characters"
+            />
+          )}
           <View style={styles.toggleRow}>
             <View style={styles.toggleCopy}>
               <Text style={styles.cardTitle}>
@@ -921,6 +943,134 @@ const nextStatus: Record<string, string> = {
   in_progress: "completed"
 };
 
+const documentLabels: Record<DetailerDocument["type"], string> = {
+  identity: "Photo identity",
+  public_liability_insurance: "Public liability insurance",
+  motor_insurance: "Business-use motor insurance"
+};
+
+function DetailerOnboardingPanel({
+  onboarding,
+  onUpdated,
+  onSignedOut
+}: {
+  onboarding: DetailerOnboarding;
+  onUpdated: (next: DetailerOnboarding) => void;
+  onSignedOut: () => void;
+}) {
+  const [businessName, setBusinessName] = useState(onboarding.businessName ?? "");
+  const [tradingAddress, setTradingAddress] = useState(onboarding.tradingAddress ?? "");
+  const [operatingPostcode, setOperatingPostcode] = useState(onboarding.operatingPostcode ?? "");
+  const [experienceYears, setExperienceYears] = useState(String(onboarding.experienceYears ?? ""));
+  const [serviceRadiusMiles, setServiceRadiusMiles] = useState(String(onboarding.serviceRadiusMiles));
+  const [ownWaterSupply, setOwnWaterSupply] = useState(onboarding.ownWaterSupply);
+  const [vatRegistered, setVatRegistered] = useState(onboarding.vatRegistered);
+  const [vatNumber, setVatNumber] = useState(onboarding.vatNumber ?? "");
+  const [instagram, setInstagram] = useState(onboarding.instagram ?? "");
+  const [rightToWorkDeclared, setRightToWorkDeclared] = useState(onboarding.rightToWorkDeclared);
+  const [termsAccepted, setTermsAccepted] = useState(onboarding.termsAccepted);
+  const [publicLiabilityExpiry, setPublicLiabilityExpiry] = useState("");
+  const [motorInsuranceExpiry, setMotorInsuranceExpiry] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+
+  const editable = ["draft", "changes_requested", "rejected"].includes(onboarding.status);
+
+  const save = async () => {
+    setBusy(true); setFeedback("");
+    try {
+      const result = await api<{ onboarding: DetailerOnboarding }>("/v1/detailer/onboarding", {
+        method: "PATCH",
+        body: {
+          businessName,
+          tradingAddress,
+          operatingPostcode,
+          experienceYears: Number(experienceYears),
+          ownWaterSupply,
+          serviceRadiusMiles: Number(serviceRadiusMiles),
+          vatRegistered,
+          vatNumber: vatRegistered ? vatNumber : undefined,
+          instagram: instagram || undefined,
+          rightToWorkDeclared,
+          termsAccepted
+        }
+      });
+      onUpdated(result.onboarding);
+      setFeedback("Business details saved securely.");
+    } catch (error) { setFeedback(messageFor(error)); }
+    finally { setBusy(false); }
+  };
+
+  const upload = async (type: DetailerDocument["type"]) => {
+    const expiresAt = type === "public_liability_insurance" ? publicLiabilityExpiry : type === "motor_insurance" ? motorInsuranceExpiry : undefined;
+    if (type !== "identity" && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt ?? "")) {
+      setFeedback("Enter the insurance expiry date as YYYY-MM-DD first.");
+      return;
+    }
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: ["application/pdf", "image/jpeg", "image/png"],
+      copyToCacheDirectory: true,
+      multiple: false
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets[0];
+    if (!asset) return;
+    const mimeType = asset.mimeType ?? (asset.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : asset.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
+    setBusy(true); setFeedback("");
+    try {
+      await uploadDetailerDocument({ uri: asset.uri, fileName: asset.name, mimeType, type, expiresAt });
+      const refreshed = await api<{ onboarding: DetailerOnboarding }>("/v1/detailer/onboarding");
+      onUpdated(refreshed.onboarding);
+      setFeedback(`${documentLabels[type]} uploaded privately.`);
+    } catch (error) { setFeedback(messageFor(error)); }
+    finally { setBusy(false); }
+  };
+
+  const submit = async () => {
+    setBusy(true); setFeedback("");
+    try {
+      const result = await api<{ onboarding: DetailerOnboarding }>("/v1/detailer/onboarding/submit", { method: "POST" });
+      onUpdated(result.onboarding);
+      setFeedback("Application submitted to ValX for review.");
+    } catch (error) { setFeedback(messageFor(error)); }
+    finally { setBusy(false); }
+  };
+
+  return <ScrollView contentContainerStyle={styles.screen}>
+    <BrandHeader detail={`Detailer - ${onboarding.name}`} />
+    <View style={styles.hero}>
+      <Text style={styles.eyebrow}>PORTSMOUTH PILOT ONBOARDING</Text>
+      <Text style={styles.heroTitle}>{onboarding.status === "submitted" ? "Application under review" : "Finish your detailer profile"}</Text>
+      <Text style={styles.body}>Your private documents are only available to an authenticated ValX administrator. Payments remain disconnected.</Text>
+    </View>
+    {onboarding.reviewNotes ? <View style={styles.policyCard}><Text style={styles.eyebrow}>VALX REVIEW NOTES</Text><Text style={styles.body}>{onboarding.reviewNotes}</Text></View> : null}
+    {editable ? <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Business details</Text>
+      <Field label="Trading or business name" value={businessName} onChangeText={setBusinessName}/>
+      <Field label="Trading address" value={tradingAddress} onChangeText={setTradingAddress} multiline/>
+      <Field label="Operating postcode" value={operatingPostcode} onChangeText={setOperatingPostcode} autoCapitalize="characters"/>
+      <Field label="Years of detailing experience" value={experienceYears} onChangeText={setExperienceYears} keyboardType="number-pad"/>
+      <Field label="Service radius in miles (3-50)" value={serviceRadiusMiles} onChangeText={setServiceRadiusMiles} keyboardType="number-pad"/>
+      <Field label="Instagram (optional)" value={instagram} onChangeText={setInstagram} autoCapitalize="none"/>
+      <View style={styles.toggleRow}><View style={styles.toggleCopy}><Text style={styles.cardTitle}>I carry my own water supply</Text><Text style={styles.small}>Used to match you to eligible work.</Text></View><Switch value={ownWaterSupply} onValueChange={setOwnWaterSupply} trackColor={{ true: brand.colours.primary }}/></View>
+      <View style={styles.toggleRow}><Text style={styles.cardTitle}>VAT registered</Text><Switch value={vatRegistered} onValueChange={setVatRegistered} trackColor={{ true: brand.colours.primary }}/></View>
+      {vatRegistered ? <Field label="VAT number" value={vatNumber} onChangeText={setVatNumber} autoCapitalize="characters"/> : null}
+      <View style={styles.toggleRow}><View style={styles.toggleCopy}><Text style={styles.cardTitle}>Right-to-work declaration</Text><Text style={styles.small}>I confirm I have the right to work and provide services in the UK.</Text></View><Switch value={rightToWorkDeclared} onValueChange={setRightToWorkDeclared} trackColor={{ true: brand.colours.primary }}/></View>
+      <View style={styles.toggleRow}><View style={styles.toggleCopy}><Text style={styles.cardTitle}>Pilot terms accepted</Text><Text style={styles.small}>I confirm the information supplied is accurate and accept the ValX pilot terms.</Text></View><Switch value={termsAccepted} onValueChange={setTermsAccepted} trackColor={{ true: brand.colours.primary }}/></View>
+      <PrimaryButton label={busy ? "Saving..." : "Save business details"} onPress={save} disabled={busy}/>
+
+      <Text style={styles.sectionTitle}>Required documents</Text>
+      <Text style={styles.body}>PDF, JPEG or PNG only, maximum 5 MB. Do not email these documents.</Text>
+      <View style={styles.documentCard}><Text style={styles.cardTitle}>Photo identity</Text><Text style={styles.small}>{onboarding.documents.find(({ type }) => type === "identity")?.originalName ?? "Not uploaded"}</Text><PrimaryButton label="Choose identity file" onPress={() => void upload("identity")} disabled={busy}/></View>
+      <View style={styles.documentCard}><Text style={styles.cardTitle}>Public liability insurance</Text><Field label="Policy expiry (YYYY-MM-DD)" value={publicLiabilityExpiry} onChangeText={setPublicLiabilityExpiry}/><Text style={styles.small}>{onboarding.documents.find(({ type }) => type === "public_liability_insurance")?.originalName ?? "Not uploaded"}</Text><PrimaryButton label="Choose liability policy" onPress={() => void upload("public_liability_insurance")} disabled={busy}/></View>
+      <View style={styles.documentCard}><Text style={styles.cardTitle}>Business-use motor insurance</Text><Field label="Policy expiry (YYYY-MM-DD)" value={motorInsuranceExpiry} onChangeText={setMotorInsuranceExpiry}/><Text style={styles.small}>{onboarding.documents.find(({ type }) => type === "motor_insurance")?.originalName ?? "Not uploaded"}</Text><PrimaryButton label="Choose motor policy" onPress={() => void upload("motor_insurance")} disabled={busy}/></View>
+      <PrimaryButton label={busy ? "Please wait..." : "Submit application for review"} onPress={submit} disabled={busy}/>
+    </View> : <View style={styles.policyCard}><Text style={styles.cardTitle}>No action is needed right now</Text><Text style={styles.body}>ValX will review the application and documents. Job offers stay locked until approval.</Text></View>}
+    {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
+    <Pressable style={styles.secondaryButton} onPress={() => { void session.clear().then(onSignedOut); }}><Text style={styles.secondaryText}>Sign out</Text></Pressable>
+  </ScrollView>;
+}
+
 function DetailerApp({
   user,
   onSignedOut
@@ -931,21 +1081,28 @@ function DetailerApp({
   const [tab, setTab] = useState<"offers" | "jobs" | "account">("offers");
   const [offers, setOffers] = useState<Booking[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [onboarding, setOnboarding] = useState<DetailerOnboarding | null>(null);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [offerData, bookingData] = await Promise.all([
+    const [offerData, bookingData, onboardingData] = await Promise.all([
       api<{ offers: Booking[] }>("/v1/detailer/offers"),
-      api<{ bookings: Booking[] }>("/v1/detailer/bookings")
+      api<{ bookings: Booking[] }>("/v1/detailer/bookings"),
+      api<{ onboarding: DetailerOnboarding }>("/v1/detailer/onboarding")
     ]);
     setOffers(offerData.offers);
     setBookings(bookingData.bookings);
+    setOnboarding(onboardingData.onboarding);
   }, []);
 
   useEffect(() => {
     refresh().catch((error) => setFeedback(messageFor(error)));
   }, [refresh]);
+
+  if (onboarding && onboarding.status !== "approved") {
+    return <DetailerOnboardingPanel onboarding={onboarding} onUpdated={setOnboarding} onSignedOut={onSignedOut}/>;
+  }
 
   const accept = async (id: string) => {
     setBusy(true);
@@ -1302,5 +1459,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "capitalize"
   },
-  earnings: { color: brand.colours.primary, fontSize: 19, fontWeight: "900" }
+  earnings: { color: brand.colours.primary, fontSize: 19, fontWeight: "900" },
+  documentCard: {
+    padding: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: brand.colours.line,
+    borderRadius: 18,
+    backgroundColor: brand.colours.panel
+  }
 });

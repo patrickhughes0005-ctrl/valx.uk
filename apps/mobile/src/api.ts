@@ -66,3 +66,37 @@ export async function api<T>(
   }
   return result as T;
 }
+
+export async function uploadDetailerDocument<T>(input: {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  type: "identity" | "public_liability_insurance" | "motor_insurance";
+  expiresAt?: string;
+}): Promise<T> {
+  const token = await session.get();
+  if (!token) throw new ApiError(401, "authentication_required");
+  const source = await fetch(input.uri);
+  const body = await source.blob();
+  const query = new URLSearchParams({
+    type: input.type,
+    fileName: input.fileName
+  });
+  if (input.expiresAt) query.set("expiresAt", input.expiresAt);
+  const response = await fetch(
+    `${API_URL}/v1/detailer/onboarding/documents?${query.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": input.mimeType
+      },
+      body
+    }
+  );
+  const result = await response.json();
+  if (!response.ok) {
+    throw new ApiError(response.status, result?.error ?? "request_failed");
+  }
+  return result as T;
+}

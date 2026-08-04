@@ -58,10 +58,13 @@ The mobile application now supports:
 
 1. Invited customer or detailer registration and sign-in.
 2. Customer vehicle and service-address onboarding.
-3. Server-persisted, 15-minute pricing snapshots.
-4. A no-payment booking request.
-5. Eligible detailer offer, acceptance and job-status progression.
-6. Customer booking history, support requests and account deletion.
+3. Single-use detailer email invitations, business onboarding and private
+   identity/insurance uploads.
+4. Authenticated Admin review, changes, rejection or approval with audit events.
+5. Server-persisted, 15-minute pricing snapshots.
+6. A no-payment booking request.
+7. Eligible approved-detailer offer, acceptance and job-status progression.
+8. Customer booking history, support requests and account deletion.
 
 The public web routes `/privacy`, `/support` and `/delete-account` remain
 available while the administrator portal is closed.
@@ -97,13 +100,14 @@ checks on every push and pull request.
   remain closed.
 - Google Places and Routes default to mock mode until billing, keys, quotas,
   terms, privacy disclosures, and attribution are approved.
-- Administrator OIDC/MFA, verified email recovery, media storage,
-  notifications, production observability and tested off-host restore remain
-  launch gates.
+- Individual administrator roles, malware scanning, encrypted off-host document
+  backup and restore testing, notifications, and production observability remain
+  launch gates before expanding beyond the invited pilot.
 - The privacy notice still needs the registered ValX legal entity, postal
   address and monitored support/privacy contact before external distribution.
 
 See [Architecture](docs/ARCHITECTURE.md),
 [Product specification](docs/PRODUCT_SPEC.md),
-[Integrations](docs/INTEGRATIONS.md), and
+[Integrations](docs/INTEGRATIONS.md),
+[Detailer onboarding](docs/DETAILER_ONBOARDING.md), and
 [Security](docs/SECURITY.md).

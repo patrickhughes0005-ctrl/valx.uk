@@ -48,6 +48,23 @@ export const authTokenPurpose = pgEnum("auth_token_purpose", [
   "reset_password",
   "admin_mfa"
 ]);
+export const detailerOnboardingStatus = pgEnum("detailer_onboarding_status", [
+  "draft",
+  "submitted",
+  "changes_requested",
+  "approved",
+  "rejected"
+]);
+export const detailerDocumentType = pgEnum("detailer_document_type", [
+  "identity",
+  "public_liability_insurance",
+  "motor_insurance"
+]);
+export const detailerDocumentStatus = pgEnum("detailer_document_status", [
+  "pending",
+  "approved",
+  "rejected"
+]);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -137,13 +154,79 @@ export const detailerProfiles = pgTable("detailer_profiles", {
   vatRegistered: boolean("vat_registered").notNull().default(false),
   vatNumber: text("vat_number"),
   instagram: text("instagram"),
+  businessName: text("business_name"),
+  tradingAddress: text("trading_address"),
+  operatingPostcode: text("operating_postcode"),
+  experienceYears: integer("experience_years"),
+  rightToWorkDeclared: boolean("right_to_work_declared").notNull().default(false),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  onboardingStatus: detailerOnboardingStatus("onboarding_status")
+    .notNull()
+    .default("draft"),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),
   insuranceExpiresAt: timestamp("insurance_expires_at", {
     withTimezone: true
   }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewedBy: uuid("reviewed_by").references(() => users.id),
+  reviewNotes: text("review_notes"),
   ...timestamps
 });
+
+export const detailerInvitations = pgTable(
+  "detailer_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    uniqueIndex("detailer_invitations_token_hash_idx").on(table.tokenHash),
+    index("detailer_invitations_email_idx").on(table.email, table.expiresAt)
+  ]
+);
+
+export const detailerDocuments = pgTable(
+  "detailer_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    detailerId: uuid("detailer_id")
+      .notNull()
+      .references(() => users.id),
+    type: detailerDocumentType("type").notNull(),
+    status: detailerDocumentStatus("status").notNull().default("pending"),
+    originalName: text("original_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    storageKey: text("storage_key").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    reviewNotes: text("review_notes"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    uniqueIndex("detailer_documents_storage_key_idx").on(table.storageKey),
+    index("detailer_documents_detailer_idx").on(
+      table.detailerId,
+      table.type,
+      table.uploadedAt
+    )
+  ]
+);
 
 export const vehicles = pgTable("vehicles", {
   id: uuid("id").primaryKey().defaultRandom(),

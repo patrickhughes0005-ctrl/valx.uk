@@ -37,6 +37,8 @@ const environment = z.object({
   SUPPORT_EMAIL: z.string().email().default("support@example.invalid"),
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   ADMIN_APP_URL: z.string().url().default("http://localhost:3001"),
+  DOCUMENT_STORAGE_PATH: z.string().min(1).default("./.private/detailer-documents"),
+  DOCUMENT_MAX_BYTES: z.coerce.number().int().min(1024).max(10 * 1024 * 1024).default(5 * 1024 * 1024),
   DVLA_MODE: z.enum(["mock", "live"]).default("mock"),
   DVLA_API_BASE_URL: z
     .string()

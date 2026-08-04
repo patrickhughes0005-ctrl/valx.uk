@@ -6,6 +6,8 @@ import {
   bookings,
   createDatabase,
   customerProfiles,
+  detailerDocuments,
+  detailerInvitations,
   detailerProfiles,
   quotes,
   sessions,
@@ -87,6 +89,51 @@ export type RegistrationInput = {
   vatRegistered?: boolean;
   vatNumber?: string;
   instagram?: string;
+  invitationTokenHash?: string;
+};
+
+export type DetailerOnboardingStatus =
+  | "draft"
+  | "submitted"
+  | "changes_requested"
+  | "approved"
+  | "rejected";
+export type DetailerDocumentType =
+  | "identity"
+  | "public_liability_insurance"
+  | "motor_insurance";
+export type DetailerDocumentView = {
+  id: string;
+  type: DetailerDocumentType;
+  status: "pending" | "approved" | "rejected";
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  expiresAt: string | null;
+  uploadedAt: string;
+  reviewNotes: string | null;
+};
+export type DetailerOnboardingView = {
+  userId: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  businessName: string | null;
+  tradingAddress: string | null;
+  operatingPostcode: string | null;
+  experienceYears: number | null;
+  ownWaterSupply: boolean;
+  serviceRadiusMiles: number;
+  vatRegistered: boolean;
+  vatNumber: string | null;
+  instagram: string | null;
+  rightToWorkDeclared: boolean;
+  termsAccepted: boolean;
+  status: DetailerOnboardingStatus;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  reviewNotes: string | null;
+  documents: DetailerDocumentView[];
 };
 
 export interface ValxRepository {
@@ -112,6 +159,52 @@ export interface ValxRepository {
   verifyEmail(tokenHash: string): Promise<UserRecord | null>;
   resetPassword(tokenHash: string, passwordHash: string): Promise<boolean>;
   approveDetailerByEmail(email: string, operator: string): Promise<boolean>;
+  createDetailerInvitation(input: {
+    email: string;
+    tokenHash: string;
+    invitedBy: string;
+    expiresAt: Date;
+  }): Promise<{ id: string; email: string; expiresAt: string }>;
+  getDetailerOnboarding(detailerId: string): Promise<DetailerOnboardingView | null>;
+  updateDetailerOnboarding(
+    detailerId: string,
+    input: {
+      businessName: string;
+      tradingAddress: string;
+      operatingPostcode: string;
+      experienceYears: number;
+      ownWaterSupply: boolean;
+      serviceRadiusMiles: number;
+      vatRegistered: boolean;
+      vatNumber?: string;
+      instagram?: string;
+      rightToWorkDeclared: boolean;
+      termsAccepted: boolean;
+    }
+  ): Promise<DetailerOnboardingView | null>;
+  addDetailerDocument(input: {
+    detailerId: string;
+    type: DetailerDocumentType;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    storageKey: string;
+    expiresAt?: Date;
+  }): Promise<DetailerDocumentView>;
+  submitDetailerOnboarding(detailerId: string): Promise<DetailerOnboardingView | null>;
+  listAdminDetailers(): Promise<DetailerOnboardingView[]>;
+  reviewDetailerOnboarding(input: {
+    detailerId: string;
+    adminId: string;
+    decision: "approved" | "changes_requested" | "rejected";
+    notes: string;
+  }): Promise<DetailerOnboardingView | null>;
+  findDetailerDocumentForAdmin(documentId: string): Promise<{
+    storageKey: string;
+    originalName: string;
+    mimeType: string;
+  } | null>;
   createSession(
     userId: string,
     tokenHash: string,
@@ -280,6 +373,67 @@ export const createPostgresRepository = (
     );
   };
 
+  const onboardingView = async (
+    detailerId: string
+  ): Promise<DetailerOnboardingView | null> => {
+    const [row] = await db
+      .select({
+        userId: users.id,
+        email: users.email,
+        name: users.name,
+        phone: users.phone,
+        profile: detailerProfiles
+      })
+      .from(users)
+      .innerJoin(detailerProfiles, eq(detailerProfiles.userId, users.id))
+      .where(
+        and(
+          eq(users.id, detailerId),
+          eq(users.role, "detailer"),
+          isNull(users.deletedAt)
+        )
+      )
+      .limit(1);
+    if (!row) return null;
+    const documents = await db
+      .select()
+      .from(detailerDocuments)
+      .where(eq(detailerDocuments.detailerId, detailerId))
+      .orderBy(desc(detailerDocuments.uploadedAt));
+    return {
+      userId: row.userId,
+      email: row.email,
+      name: row.name,
+      phone: row.phone,
+      businessName: row.profile.businessName,
+      tradingAddress: row.profile.tradingAddress,
+      operatingPostcode: row.profile.operatingPostcode,
+      experienceYears: row.profile.experienceYears,
+      ownWaterSupply: row.profile.ownWaterSupply,
+      serviceRadiusMiles: row.profile.serviceRadiusMiles,
+      vatRegistered: row.profile.vatRegistered,
+      vatNumber: row.profile.vatNumber,
+      instagram: row.profile.instagram,
+      rightToWorkDeclared: row.profile.rightToWorkDeclared,
+      termsAccepted: row.profile.termsAcceptedAt !== null,
+      status: row.profile.onboardingStatus,
+      submittedAt: row.profile.submittedAt?.toISOString() ?? null,
+      approvedAt: row.profile.approvedAt?.toISOString() ?? null,
+      reviewNotes: row.profile.reviewNotes,
+      documents: documents.map((document) => ({
+        id: document.id,
+        type: document.type,
+        status: document.status,
+        originalName: document.originalName,
+        mimeType: document.mimeType,
+        sizeBytes: document.sizeBytes,
+        expiresAt: document.expiresAt?.toISOString() ?? null,
+        uploadedAt: document.uploadedAt.toISOString(),
+        reviewNotes: document.reviewNotes
+      }))
+    };
+  };
+
   return {
     close: connection.close,
     async healthcheck() {
@@ -287,6 +441,22 @@ export const createPostgresRepository = (
     },
     async createUser(input) {
       return db.transaction(async (tx) => {
+        if (input.role === "detailer" && input.invitationTokenHash) {
+          const now = new Date();
+          const [invitation] = await tx
+            .update(detailerInvitations)
+            .set({ acceptedAt: now })
+            .where(
+              and(
+                eq(detailerInvitations.tokenHash, input.invitationTokenHash),
+                eq(detailerInvitations.email, input.email),
+                gt(detailerInvitations.expiresAt, now),
+                isNull(detailerInvitations.acceptedAt)
+              )
+            )
+            .returning({ id: detailerInvitations.id });
+          if (!invitation) throw new Error("invalid_detailer_invitation");
+        }
         const [user] = await tx
           .insert(users)
           .values({
@@ -313,7 +483,8 @@ export const createPostgresRepository = (
             vatRegistered: input.vatRegistered ?? false,
             vatNumber: input.vatNumber || null,
             instagram: input.instagram || null,
-            onboardingComplete: true
+            onboardingComplete: false,
+            onboardingStatus: "draft"
           });
         }
         await tx.insert(auditLog).values({
@@ -573,7 +744,13 @@ export const createPostgresRepository = (
         const now = new Date();
         await tx
           .update(detailerProfiles)
-          .set({ approvedAt: now, updatedAt: now })
+          .set({
+            approvedAt: now,
+            reviewedAt: now,
+            onboardingComplete: true,
+            onboardingStatus: "approved",
+            updatedAt: now
+          })
           .where(eq(detailerProfiles.userId, detailer.id));
         await tx.insert(auditLog).values({
           actorId: null,
@@ -584,6 +761,208 @@ export const createPostgresRepository = (
         });
         return true;
       });
+    },
+    async createDetailerInvitation(input) {
+      const [invitation] = await db
+        .insert(detailerInvitations)
+        .values(input)
+        .returning();
+      if (!invitation) throw new Error("detailer_invitation_not_created");
+      await db.insert(auditLog).values({
+        actorId: input.invitedBy,
+        action: "detailer.invited",
+        subjectType: "detailer_invitation",
+        subjectId: invitation.id,
+        metadata: { email: input.email, expiresAt: input.expiresAt.toISOString() }
+      });
+      return {
+        id: invitation.id,
+        email: invitation.email,
+        expiresAt: invitation.expiresAt.toISOString()
+      };
+    },
+    getDetailerOnboarding: onboardingView,
+    async updateDetailerOnboarding(detailerId, input) {
+      const [profile] = await db
+        .select({ status: detailerProfiles.onboardingStatus })
+        .from(detailerProfiles)
+        .where(eq(detailerProfiles.userId, detailerId))
+        .limit(1);
+      if (!profile || profile.status === "approved" || profile.status === "submitted") {
+        return null;
+      }
+      const now = new Date();
+      await db
+        .update(detailerProfiles)
+        .set({
+          businessName: input.businessName,
+          tradingAddress: input.tradingAddress,
+          operatingPostcode: input.operatingPostcode,
+          experienceYears: input.experienceYears,
+          ownWaterSupply: input.ownWaterSupply,
+          serviceRadiusMiles: input.serviceRadiusMiles,
+          vatRegistered: input.vatRegistered,
+          vatNumber: input.vatRegistered ? input.vatNumber || null : null,
+          instagram: input.instagram || null,
+          rightToWorkDeclared: input.rightToWorkDeclared,
+          termsAcceptedAt: input.termsAccepted ? now : null,
+          onboardingStatus: "draft",
+          reviewNotes: null,
+          updatedAt: now
+        })
+        .where(eq(detailerProfiles.userId, detailerId));
+      await db.insert(auditLog).values({
+        actorId: detailerId,
+        action: "detailer.onboarding_updated",
+        subjectType: "user",
+        subjectId: detailerId,
+        metadata: {}
+      });
+      return onboardingView(detailerId);
+    },
+    async addDetailerDocument(input) {
+      const [profile] = await db
+        .select({ status: detailerProfiles.onboardingStatus })
+        .from(detailerProfiles)
+        .where(eq(detailerProfiles.userId, input.detailerId))
+        .limit(1);
+      if (!profile || profile.status === "approved" || profile.status === "submitted") {
+        throw new Error("detailer_onboarding_locked");
+      }
+      const [document] = await db
+        .insert(detailerDocuments)
+        .values({ ...input, status: "pending" })
+        .returning();
+      if (!document) throw new Error("detailer_document_not_created");
+      await db.insert(auditLog).values({
+        actorId: input.detailerId,
+        action: "detailer.document_uploaded",
+        subjectType: "detailer_document",
+        subjectId: document.id,
+        metadata: {
+          type: document.type,
+          sizeBytes: document.sizeBytes,
+          sha256: document.sha256
+        }
+      });
+      return {
+        id: document.id,
+        type: document.type,
+        status: document.status,
+        originalName: document.originalName,
+        mimeType: document.mimeType,
+        sizeBytes: document.sizeBytes,
+        expiresAt: document.expiresAt?.toISOString() ?? null,
+        uploadedAt: document.uploadedAt.toISOString(),
+        reviewNotes: document.reviewNotes
+      };
+    },
+    async submitDetailerOnboarding(detailerId) {
+      const submitted = await db.transaction(async (tx) => {
+        const [profile] = await tx
+          .select()
+          .from(detailerProfiles)
+          .where(eq(detailerProfiles.userId, detailerId))
+          .limit(1);
+        if (!profile || !["draft", "changes_requested"].includes(profile.onboardingStatus)) {
+          return null;
+        }
+        const documents = await tx
+          .select({ type: detailerDocuments.type, status: detailerDocuments.status })
+          .from(detailerDocuments)
+          .where(eq(detailerDocuments.detailerId, detailerId));
+        const types = new Set(
+          documents.filter(({ status }) => status !== "rejected").map(({ type }) => type)
+        );
+        const complete =
+          Boolean(profile.businessName && profile.tradingAddress && profile.operatingPostcode) &&
+          profile.experienceYears !== null &&
+          profile.rightToWorkDeclared &&
+          profile.termsAcceptedAt !== null &&
+          (!profile.vatRegistered || Boolean(profile.vatNumber)) &&
+          ["identity", "public_liability_insurance", "motor_insurance"].every((type) =>
+            types.has(type as DetailerDocumentType)
+          );
+        if (!complete) throw new Error("detailer_onboarding_incomplete");
+        const now = new Date();
+        await tx
+          .update(detailerProfiles)
+          .set({ onboardingStatus: "submitted", submittedAt: now, reviewNotes: null, updatedAt: now })
+          .where(eq(detailerProfiles.userId, detailerId));
+        await tx.insert(auditLog).values({
+          actorId: detailerId,
+          action: "detailer.onboarding_submitted",
+          subjectType: "user",
+          subjectId: detailerId,
+          metadata: {}
+        });
+        return true;
+      });
+      return submitted ? onboardingView(detailerId) : null;
+    },
+    async listAdminDetailers() {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, "detailer"), isNull(users.deletedAt)))
+        .orderBy(desc(users.createdAt));
+      return (await Promise.all(rows.map(({ id }) => onboardingView(id)))).filter(
+        (item): item is DetailerOnboardingView => item !== null
+      );
+    },
+    async reviewDetailerOnboarding(input) {
+      const reviewed = await db.transaction(async (tx) => {
+        const [profile] = await tx
+          .select({ status: detailerProfiles.onboardingStatus })
+          .from(detailerProfiles)
+          .where(eq(detailerProfiles.userId, input.detailerId))
+          .limit(1);
+        if (!profile || profile.status !== "submitted") return null;
+        const now = new Date();
+        const approved = input.decision === "approved";
+        await tx
+          .update(detailerProfiles)
+          .set({
+            onboardingStatus: input.decision,
+            onboardingComplete: approved,
+            approvedAt: approved ? now : null,
+            reviewedAt: now,
+            reviewedBy: input.adminId,
+            reviewNotes: input.notes,
+            updatedAt: now
+          })
+          .where(eq(detailerProfiles.userId, input.detailerId));
+        await tx
+          .update(detailerDocuments)
+          .set({
+            status: approved ? "approved" : "rejected",
+            reviewedAt: now,
+            reviewedBy: input.adminId,
+            reviewNotes: input.notes
+          })
+          .where(eq(detailerDocuments.detailerId, input.detailerId));
+        await tx.insert(auditLog).values({
+          actorId: input.adminId,
+          action: `detailer.onboarding_${input.decision}`,
+          subjectType: "user",
+          subjectId: input.detailerId,
+          metadata: { notes: input.notes }
+        });
+        return true;
+      });
+      return reviewed ? onboardingView(input.detailerId) : null;
+    },
+    async findDetailerDocumentForAdmin(documentId) {
+      const [document] = await db
+        .select({
+          storageKey: detailerDocuments.storageKey,
+          originalName: detailerDocuments.originalName,
+          mimeType: detailerDocuments.mimeType
+        })
+        .from(detailerDocuments)
+        .where(eq(detailerDocuments.id, documentId))
+        .limit(1);
+      return document ?? null;
     },
     async createSession(userId, tokenHash, expiresAt) {
       await db.insert(sessions).values({ userId, tokenHash, expiresAt });
@@ -971,6 +1350,15 @@ export const createMemoryRepository = (): ValxRepository => {
       quoteId: string;
     }
   >();
+  const memoryInvitations = new Map<
+    string,
+    { id: string; email: string; invitedBy: string; expiresAt: Date; accepted: boolean }
+  >();
+  const memoryOnboarding = new Map<string, DetailerOnboardingView>();
+  const memoryDocumentStorage = new Map<
+    string,
+    { storageKey: string; originalName: string; mimeType: string }
+  >();
 
   return {
     async close() {},
@@ -978,6 +1366,18 @@ export const createMemoryRepository = (): ValxRepository => {
     async createUser(input) {
       if ([...memoryUsers.values()].some((user) => user.email === input.email)) {
         throw new Error("user_exists");
+      }
+      if (input.role === "detailer" && input.invitationTokenHash) {
+        const invitation = memoryInvitations.get(input.invitationTokenHash);
+        if (
+          !invitation ||
+          invitation.accepted ||
+          invitation.email !== input.email ||
+          invitation.expiresAt <= new Date()
+        ) {
+          throw new Error("invalid_detailer_invitation");
+        }
+        invitation.accepted = true;
       }
       const user: MemoryUser = {
         ...input,
@@ -987,6 +1387,30 @@ export const createMemoryRepository = (): ValxRepository => {
         detailerApproved: input.role === "customer"
       };
       memoryUsers.set(user.id, user);
+      if (user.role === "detailer") {
+        memoryOnboarding.set(user.id, {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          businessName: null,
+          tradingAddress: null,
+          operatingPostcode: null,
+          experienceYears: null,
+          ownWaterSupply: input.ownWaterSupply ?? false,
+          serviceRadiusMiles: input.serviceRadiusMiles ?? 12,
+          vatRegistered: input.vatRegistered ?? false,
+          vatNumber: input.vatNumber ?? null,
+          instagram: input.instagram ?? null,
+          rightToWorkDeclared: false,
+          termsAccepted: false,
+          status: "draft",
+          submittedAt: null,
+          approvedAt: null,
+          reviewNotes: null,
+          documents: []
+        });
+      }
       return user;
     },
     async createAdmin(input) {
@@ -1100,7 +1524,109 @@ export const createMemoryRepository = (): ValxRepository => {
       );
       if (!detailer?.emailVerifiedAt) return false;
       detailer.detailerApproved = true;
+      const onboarding = memoryOnboarding.get(detailer.id);
+      if (onboarding) {
+        onboarding.status = "approved";
+        onboarding.approvedAt = new Date().toISOString();
+      }
       return true;
+    },
+    async createDetailerInvitation(input) {
+      const invitation = {
+        id: randomUUID(),
+        email: input.email,
+        invitedBy: input.invitedBy,
+        expiresAt: input.expiresAt,
+        accepted: false
+      };
+      memoryInvitations.set(input.tokenHash, invitation);
+      return {
+        id: invitation.id,
+        email: invitation.email,
+        expiresAt: invitation.expiresAt.toISOString()
+      };
+    },
+    async getDetailerOnboarding(detailerId) {
+      return memoryOnboarding.get(detailerId) ?? null;
+    },
+    async updateDetailerOnboarding(detailerId, input) {
+      const profile = memoryOnboarding.get(detailerId);
+      if (!profile || profile.status === "approved" || profile.status === "submitted") return null;
+      Object.assign(profile, {
+        ...input,
+        vatNumber: input.vatRegistered ? input.vatNumber ?? null : null,
+        instagram: input.instagram ?? null,
+        termsAccepted: input.termsAccepted,
+        status: "draft" as const,
+        reviewNotes: null
+      });
+      return profile;
+    },
+    async addDetailerDocument(input) {
+      const profile = memoryOnboarding.get(input.detailerId);
+      if (!profile || profile.status === "approved" || profile.status === "submitted") {
+        throw new Error("detailer_onboarding_locked");
+      }
+      const document: DetailerDocumentView = {
+        id: randomUUID(),
+        type: input.type,
+        status: "pending",
+        originalName: input.originalName,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        expiresAt: input.expiresAt?.toISOString() ?? null,
+        uploadedAt: new Date().toISOString(),
+        reviewNotes: null
+      };
+      profile.documents.unshift(document);
+      memoryDocumentStorage.set(document.id, {
+        storageKey: input.storageKey,
+        originalName: input.originalName,
+        mimeType: input.mimeType
+      });
+      return document;
+    },
+    async submitDetailerOnboarding(detailerId) {
+      const profile = memoryOnboarding.get(detailerId);
+      if (!profile || !["draft", "changes_requested"].includes(profile.status)) return null;
+      const types = new Set(
+        profile.documents.filter(({ status }) => status !== "rejected").map(({ type }) => type)
+      );
+      const complete = Boolean(
+        profile.businessName &&
+          profile.tradingAddress &&
+          profile.operatingPostcode &&
+          profile.experienceYears !== null &&
+          profile.rightToWorkDeclared &&
+          profile.termsAccepted &&
+          (!profile.vatRegistered || profile.vatNumber) &&
+          ["identity", "public_liability_insurance", "motor_insurance"].every((type) => types.has(type as DetailerDocumentType))
+      );
+      if (!complete) throw new Error("detailer_onboarding_incomplete");
+      profile.status = "submitted";
+      profile.submittedAt = new Date().toISOString();
+      return profile;
+    },
+    async listAdminDetailers() {
+      return [...memoryOnboarding.values()];
+    },
+    async reviewDetailerOnboarding(input) {
+      const profile = memoryOnboarding.get(input.detailerId);
+      if (!profile || profile.status !== "submitted") return null;
+      profile.status = input.decision;
+      profile.reviewNotes = input.notes;
+      profile.approvedAt = input.decision === "approved" ? new Date().toISOString() : null;
+      profile.documents = profile.documents.map((document) => ({
+        ...document,
+        status: input.decision === "approved" ? "approved" : "rejected",
+        reviewNotes: input.notes
+      }));
+      const user = memoryUsers.get(input.detailerId);
+      if (user) user.detailerApproved = input.decision === "approved";
+      return profile;
+    },
+    async findDetailerDocumentForAdmin(documentId) {
+      return memoryDocumentStorage.get(documentId) ?? null;
     },
     async createSession(userId, tokenHash, expiresAt) {
       sessionTokens.set(tokenHash, { userId, expiresAt, revoked: false });
