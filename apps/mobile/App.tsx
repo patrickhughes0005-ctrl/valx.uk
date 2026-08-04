@@ -41,6 +41,8 @@ const money = new Intl.NumberFormat("en-GB", {
 const errorCopy: Record<string, string> = {
   beta_invitation_required: "This private beta needs a valid invitation.",
   account_already_exists: "An account already exists for that email.",
+  invalid_registration:
+    "Check your full name, email address, mobile number and password, then try again.",
   invalid_credentials: "The email or password is not recognised.",
   email_verification_required: "Verify your email address before signing in.",
   invalid_verification_token:
@@ -180,6 +182,26 @@ function AuthScreen({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  const registrationError = () => {
+    if (name.trim().length < 2) return "Enter your full name.";
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      return "Enter a valid email address.";
+    }
+    if (phone.replace(/\D/g, "").length < 7) {
+      return "Enter a valid mobile number with at least 7 digits.";
+    }
+    if (password.length < 10) {
+      return "Create a password containing at least 10 characters.";
+    }
+    if (password.length > 128) {
+      return "Your password must be no longer than 128 characters.";
+    }
+    if (role === "detailer" && vatRegistered && !vatNumber.trim()) {
+      return "Enter your VAT number or switch off VAT registered.";
+    }
+    return null;
+  };
+
   useEffect(() => {
     const applyAuthLink = (url: string | null) => {
       if (!url) return;
@@ -257,6 +279,11 @@ function AuthScreen({
         return;
       }
       if (mode === "create") {
+        const formError = registrationError();
+        if (formError) {
+          setError(formError);
+          return;
+        }
         await api<{ verificationRequired: true }>("/v1/auth/register", {
           method: "POST",
           authenticated: false,
