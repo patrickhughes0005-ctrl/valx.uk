@@ -339,7 +339,7 @@ export const createApp = async (
   });
 
   app.get("/v1/public/privacy", async () => ({
-    controller: "ValX",
+    controller: "VALX LIMITED (company number 17378672)",
     contact: config.SUPPORT_EMAIL,
     purpose:
       "Account onboarding, vehicle detailing bookings, service delivery, support and legal record keeping.",

@@ -8,8 +8,7 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default function SupportPage() {
-  const supportEmail =
-    process.env.SUPPORT_EMAIL ?? "support contact pending deployment";
+  const supportEmail = process.env.SUPPORT_EMAIL ?? "support@valx.uk";
 
   return (
     <PublicShell eyebrow="VALX HELP" title="Support">

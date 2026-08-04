@@ -7,13 +7,12 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default function PrivacyPage() {
-  const supportEmail =
-    process.env.SUPPORT_EMAIL ?? "support contact pending deployment";
+  const supportEmail = process.env.SUPPORT_EMAIL ?? "support@valx.uk";
 
   return (
     <PublicShell eyebrow="Effective 30 July 2026" title="Privacy notice">
       <p>
-        ValX provides vehicle detailing services and operates customer,
+        VALX LIMITED (company number 17378672) provides vehicle detailing services and operates customer,
         detailer and administrative accounts. This notice explains the
         information used by the private beta. It must be read with the
         applicable customer or detailer terms.
@@ -71,8 +70,9 @@ export default function PrivacyPage() {
         Privacy and support enquiries: <strong>{supportEmail}</strong>.
       </p>
       <p className="public-callout">
-        Before public launch, ValX must add its registered legal entity,
-        postal address and monitored privacy contact to this notice.
+        VALX LIMITED is registered in England and Wales. Registered-office
+        information is available from Companies House under company number
+        17378672.
       </p>
     </PublicShell>
   );
