@@ -233,6 +233,7 @@ export const createApp = async (
 
   await app.register(helmet, { global: true });
   await app.register(cors, {
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     origin(origin, callback) {
       if (!origin || config.corsOrigins.includes(origin)) {
         callback(null, true);

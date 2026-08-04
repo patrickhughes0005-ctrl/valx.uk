@@ -119,6 +119,27 @@ describe("ValX API", () => {
     expect(response.json()).toEqual({ status: "ready" });
   });
 
+  it("allows browser preflights for every API method used by the apps", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/detailer/onboarding",
+      headers: {
+        origin: "http://localhost:3000",
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "authorization,content-type"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe(
+      "http://localhost:3000"
+    );
+    expect(response.headers["access-control-allow-methods"]).toContain("PATCH");
+    expect(response.headers["access-control-allow-headers"]).toContain(
+      "authorization"
+    );
+  });
+
   it("uses the shared approved pricing package", async () => {
     const response = await app.inject({
       method: "POST",
