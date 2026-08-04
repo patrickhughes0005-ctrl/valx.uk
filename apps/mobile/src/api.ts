@@ -2,8 +2,14 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const SESSION_KEY = "valx.beta.session";
-export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
+const defaultApiUrl =
+  Platform.OS === "web" &&
+  typeof window !== "undefined" &&
+  window.location.hostname.endsWith("valx.uk")
+    ? "https://api.valx.uk"
+    : "http://localhost:4000";
+
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? defaultApiUrl;
 
 type ApiOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
