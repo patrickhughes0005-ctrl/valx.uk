@@ -1,6 +1,7 @@
 import {
   accountDeletionRequests,
   addresses,
+  affiliatePointLedger,
   auditLog,
   authTokens,
   bookings,
@@ -136,6 +137,29 @@ export type DetailerOnboardingView = {
   documents: DetailerDocumentView[];
 };
 
+export type AffiliatePointEntry = {
+  id: string;
+  detailerId: string;
+  detailerName: string;
+  detailerEmail: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  bookingId: string;
+  points: number;
+  reason: "first_referred_booking_completed";
+  createdAt: string;
+};
+
+export type DetailerRewardsView = {
+  affiliateCode: string | null;
+  pointsBalance: number;
+  pointsPerFirstBooking: 10;
+  suppliesStatus: "tbc";
+  supplies: [];
+  ledger: AffiliatePointEntry[];
+};
+
 export type AdminDashboardView = {
   generatedAt: string;
   paymentsConnected: false;
@@ -153,6 +177,7 @@ export type AdminDashboardView = {
     paidPayouts: number;
     openSupportRequests: number;
     pendingDeletionRequests: number;
+    affiliatePointsAwarded: number;
   };
   customers: Array<{
     id: string;
@@ -195,6 +220,7 @@ export type AdminDashboardView = {
     metadata: unknown;
     createdAt: string;
   }>;
+  affiliatePoints: AffiliatePointEntry[];
 };
 
 export interface ValxRepository {
@@ -266,6 +292,11 @@ export interface ValxRepository {
     originalName: string;
     mimeType: string;
   } | null>;
+  getDetailerRewards(detailerId: string): Promise<DetailerRewardsView | null>;
+  setDetailerAffiliateCode(
+    detailerId: string,
+    code: string
+  ): Promise<DetailerRewardsView | null>;
   getAdminDashboard(): Promise<AdminDashboardView>;
   createSession(
     userId: string,
@@ -311,6 +342,7 @@ export interface ValxRepository {
       waterAvailable: boolean | null;
     }>
   >;
+  isCustomerAffiliateFirstBookingEligible(customerId: string): Promise<boolean>;
   saveQuote(input: {
     customerId: string;
     serviceId: ServiceId;
@@ -496,6 +528,65 @@ export const createPostgresRepository = (
     };
   };
 
+  const detailerRewardsView = async (
+    detailerId: string
+  ): Promise<DetailerRewardsView | null> => {
+    const [detailer] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        affiliateCode: detailerProfiles.affiliateCode
+      })
+      .from(detailerProfiles)
+      .innerJoin(users, eq(detailerProfiles.userId, users.id))
+      .where(
+        and(
+          eq(detailerProfiles.userId, detailerId),
+          eq(detailerProfiles.onboardingStatus, "approved"),
+          isNull(users.deletedAt)
+        )
+      )
+      .limit(1);
+    if (!detailer) return null;
+
+    const entries = await db
+      .select()
+      .from(affiliatePointLedger)
+      .where(eq(affiliatePointLedger.detailerId, detailerId))
+      .orderBy(desc(affiliatePointLedger.createdAt));
+    const ledger = await Promise.all(
+      entries.map(async (entry) => {
+        const [customer] = await db
+          .select({ name: users.name, email: users.email })
+          .from(users)
+          .where(eq(users.id, entry.customerId))
+          .limit(1);
+        return {
+          id: entry.id,
+          detailerId,
+          detailerName: detailer.name,
+          detailerEmail: detailer.email,
+          customerId: entry.customerId,
+          customerName: customer?.name ?? "Deleted customer",
+          customerEmail: customer?.email ?? "Deleted customer",
+          bookingId: entry.bookingId,
+          points: entry.points,
+          reason: "first_referred_booking_completed" as const,
+          createdAt: entry.createdAt.toISOString()
+        };
+      })
+    );
+    return {
+      affiliateCode: detailer.affiliateCode,
+      pointsBalance: ledger.reduce((total, entry) => total + entry.points, 0),
+      pointsPerFirstBooking: 10,
+      suppliesStatus: "tbc",
+      supplies: [],
+      ledger
+    };
+  };
+
   return {
     close: connection.close,
     async healthcheck() {
@@ -503,6 +594,23 @@ export const createPostgresRepository = (
     },
     async createUser(input) {
       return db.transaction(async (tx) => {
+        let referredDetailerId: string | null = null;
+        if (input.role === "customer" && input.affiliateCode) {
+          const [referrer] = await tx
+            .select({ userId: detailerProfiles.userId })
+            .from(detailerProfiles)
+            .innerJoin(users, eq(detailerProfiles.userId, users.id))
+            .where(
+              and(
+                eq(detailerProfiles.affiliateCode, input.affiliateCode),
+                eq(detailerProfiles.onboardingStatus, "approved"),
+                isNull(users.deletedAt)
+              )
+            )
+            .limit(1);
+          if (!referrer) throw new Error("invalid_affiliate_code");
+          referredDetailerId = referrer.userId;
+        }
         if (input.role === "detailer" && input.invitationTokenHash) {
           const now = new Date();
           const [invitation] = await tx
@@ -535,7 +643,8 @@ export const createPostgresRepository = (
           await tx.insert(customerProfiles).values({
             userId: user.id,
             waterAvailable: input.waterAvailable ?? true,
-            affiliateCode: input.affiliateCode || null
+            affiliateCode: input.affiliateCode || null,
+            referredDetailerId
           });
         } else {
           await tx.insert(detailerProfiles).values({
@@ -1032,6 +1141,49 @@ export const createPostgresRepository = (
         .limit(1);
       return document ?? null;
     },
+    async getDetailerRewards(detailerId) {
+      return detailerRewardsView(detailerId);
+    },
+    async setDetailerAffiliateCode(detailerId, code) {
+      const [profile] = await db
+        .select({
+          affiliateCode: detailerProfiles.affiliateCode,
+          status: detailerProfiles.onboardingStatus
+        })
+        .from(detailerProfiles)
+        .where(eq(detailerProfiles.userId, detailerId))
+        .limit(1);
+      if (!profile || profile.status !== "approved") return null;
+      if (profile.affiliateCode === code) return detailerRewardsView(detailerId);
+      if (profile.affiliateCode) throw new Error("affiliate_code_locked");
+      try {
+        const [updated] = await db
+          .update(detailerProfiles)
+          .set({ affiliateCode: code, updatedAt: new Date() })
+          .where(
+            and(
+              eq(detailerProfiles.userId, detailerId),
+              eq(detailerProfiles.onboardingStatus, "approved"),
+              isNull(detailerProfiles.affiliateCode)
+            )
+          )
+          .returning({ userId: detailerProfiles.userId });
+        if (!updated) throw new Error("affiliate_code_locked");
+        await db.insert(auditLog).values({
+          actorId: detailerId,
+          action: "affiliate.code_created",
+          subjectType: "detailer",
+          subjectId: detailerId,
+          metadata: { code }
+        });
+        return detailerRewardsView(detailerId);
+      } catch (error) {
+        if (error instanceof Error && error.message === "affiliate_code_locked") {
+          throw error;
+        }
+        throw new Error("affiliate_code_unavailable");
+      }
+    },
     async getAdminDashboard() {
       const realAccount = notLike(users.email, "%@staging.valx.invalid");
       const customerRows = await db
@@ -1145,6 +1297,46 @@ export const createPostgresRepository = (
         .where(or(isNull(users.email), realAccount))
         .orderBy(desc(auditLog.createdAt))
         .limit(100);
+      const rewardRows = await db
+        .select()
+        .from(affiliatePointLedger)
+        .orderBy(desc(affiliatePointLedger.createdAt))
+        .limit(100);
+      const affiliatePoints = (
+        await Promise.all(
+          rewardRows.map(async (entry) => {
+            const [detailer] = await db
+              .select({ name: users.name, email: users.email })
+              .from(users)
+              .where(eq(users.id, entry.detailerId))
+              .limit(1);
+            const [customer] = await db
+              .select({ name: users.name, email: users.email })
+              .from(users)
+              .where(eq(users.id, entry.customerId))
+              .limit(1);
+            if (!detailer || !customer) return null;
+            return {
+              id: entry.id,
+              detailerId: entry.detailerId,
+              detailerName: detailer.name,
+              detailerEmail: detailer.email,
+              customerId: entry.customerId,
+              customerName: customer.name,
+              customerEmail: customer.email,
+              bookingId: entry.bookingId,
+              points: entry.points,
+              reason: "first_referred_booking_completed" as const,
+              createdAt: entry.createdAt.toISOString()
+            };
+          })
+        )
+      ).filter(
+        (entry): entry is AffiliatePointEntry =>
+          entry !== null &&
+          !entry.detailerEmail.endsWith("@staging.valx.invalid") &&
+          !entry.customerEmail.endsWith("@staging.valx.invalid")
+      );
 
       const activeStatuses = new Set([
         "confirmed",
@@ -1183,7 +1375,11 @@ export const createPostgresRepository = (
           openSupportRequests: supportRows.filter(({ status }) => status === "open").length,
           pendingDeletionRequests: deletionRows.filter(({ status }) =>
             status === "requested" || status === "processing"
-          ).length
+          ).length,
+          affiliatePointsAwarded: affiliatePoints.reduce(
+            (total, entry) => total + entry.points,
+            0
+          )
         },
         customers: customerRows.map((customer) => ({
           ...customer,
@@ -1207,7 +1403,8 @@ export const createPostgresRepository = (
         audit: auditRows.map((entry) => ({
           ...entry,
           createdAt: entry.createdAt.toISOString()
-        }))
+        })),
+        affiliatePoints
       };
     },
     async createSession(userId, tokenHash, expiresAt) {
@@ -1291,6 +1488,25 @@ export const createPostgresRepository = (
         .from(addresses)
         .where(eq(addresses.customerId, customerId))
         .orderBy(desc(addresses.createdAt));
+    },
+    async isCustomerAffiliateFirstBookingEligible(customerId) {
+      const [profile] = await db
+        .select({ referredDetailerId: customerProfiles.referredDetailerId })
+        .from(customerProfiles)
+        .where(eq(customerProfiles.userId, customerId))
+        .limit(1);
+      if (!profile?.referredDetailerId) return false;
+      const [existing] = await db
+        .select({ id: bookings.id })
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.customerId, customerId),
+            sql`${bookings.status} <> 'cancelled'`
+          )
+        )
+        .limit(1);
+      return !existing;
     },
     async saveQuote(input) {
       const [quote] = await db
@@ -1478,29 +1694,68 @@ export const createPostgresRepository = (
     },
     async updateBookingStatus(bookingId, detailerId, status) {
       const now = new Date();
-      const [updated] = await db
-        .update(bookings)
-        .set({
-          status,
-          arrivedAt: status === "arrived" ? now : undefined,
-          completedAt: status === "completed" ? now : undefined,
-          updatedAt: now
-        })
-        .where(
-          and(
-            eq(bookings.id, bookingId),
-            eq(bookings.detailerId, detailerId)
+      const updated = await db.transaction(async (tx) => {
+        const [booking] = await tx
+          .update(bookings)
+          .set({
+            status,
+            arrivedAt: status === "arrived" ? now : undefined,
+            completedAt: status === "completed" ? now : undefined,
+            updatedAt: now
+          })
+          .where(
+            and(
+              eq(bookings.id, bookingId),
+              eq(bookings.detailerId, detailerId)
+            )
           )
-        )
-        .returning({ id: bookings.id });
-      if (!updated) return null;
-      await db.insert(auditLog).values({
-        actorId: detailerId,
-        action: `booking.${status}`,
-        subjectType: "booking",
-        subjectId: bookingId,
-        metadata: {}
+          .returning({ id: bookings.id, customerId: bookings.customerId });
+        if (!booking) return null;
+
+        await tx.insert(auditLog).values({
+          actorId: detailerId,
+          action: `booking.${status}`,
+          subjectType: "booking",
+          subjectId: bookingId,
+          metadata: {}
+        });
+        if (status === "completed") {
+          const [referral] = await tx
+            .select({ detailerId: customerProfiles.referredDetailerId })
+            .from(customerProfiles)
+            .where(eq(customerProfiles.userId, booking.customerId))
+            .limit(1);
+          if (referral?.detailerId) {
+            const [award] = await tx
+              .insert(affiliatePointLedger)
+              .values({
+                detailerId: referral.detailerId,
+                customerId: booking.customerId,
+                bookingId,
+                points: 10,
+                reason: "first_referred_booking_completed"
+              })
+              .onConflictDoNothing({ target: affiliatePointLedger.customerId })
+              .returning({ id: affiliatePointLedger.id });
+            if (award) {
+              await tx.insert(auditLog).values({
+                actorId: detailerId,
+                action: "affiliate.points_awarded",
+                subjectType: "affiliate_point_ledger",
+                subjectId: award.id,
+                metadata: {
+                  awardedDetailerId: referral.detailerId,
+                  customerId: booking.customerId,
+                  bookingId,
+                  points: 10
+                }
+              });
+            }
+          }
+        }
+        return booking;
       });
+      if (!updated) return null;
       return bookingView(bookingId);
     },
     async createSupportRequest(userId, category, message) {
@@ -1605,6 +1860,24 @@ export const createMemoryRepository = (): ValxRepository => {
     string,
     { storageKey: string; originalName: string; mimeType: string }
   >();
+  const memoryAffiliateCodes = new Map<string, string>();
+  const memoryCustomerReferrals = new Map<string, string>();
+  const memoryAffiliatePoints: AffiliatePointEntry[] = [];
+  const memoryRewardsView = (detailerId: string): DetailerRewardsView | null => {
+    const detailer = memoryUsers.get(detailerId);
+    if (!detailer?.detailerApproved) return null;
+    const ledger = memoryAffiliatePoints.filter(
+      (entry) => entry.detailerId === detailerId
+    );
+    return {
+      affiliateCode: memoryAffiliateCodes.get(detailerId) ?? null,
+      pointsBalance: ledger.reduce((total, entry) => total + entry.points, 0),
+      pointsPerFirstBooking: 10,
+      suppliesStatus: "tbc",
+      supplies: [],
+      ledger
+    };
+  };
 
   return {
     async close() {},
@@ -1625,6 +1898,16 @@ export const createMemoryRepository = (): ValxRepository => {
         }
         invitation.accepted = true;
       }
+      let referredDetailerId: string | null = null;
+      if (input.role === "customer" && input.affiliateCode) {
+        referredDetailerId =
+          [...memoryAffiliateCodes.entries()].find(
+            ([detailerId, code]) =>
+              code === input.affiliateCode &&
+              memoryUsers.get(detailerId)?.detailerApproved
+          )?.[0] ?? null;
+        if (!referredDetailerId) throw new Error("invalid_affiliate_code");
+      }
       const user: MemoryUser = {
         ...input,
         id: randomUUID(),
@@ -1633,6 +1916,9 @@ export const createMemoryRepository = (): ValxRepository => {
         detailerApproved: input.role === "customer"
       };
       memoryUsers.set(user.id, user);
+      if (referredDetailerId) {
+        memoryCustomerReferrals.set(user.id, referredDetailerId);
+      }
       if (user.role === "detailer") {
         memoryOnboarding.set(user.id, {
           userId: user.id,
@@ -1876,6 +2162,21 @@ export const createMemoryRepository = (): ValxRepository => {
     async findDetailerDocumentForAdmin(documentId) {
       return memoryDocumentStorage.get(documentId) ?? null;
     },
+    async getDetailerRewards(detailerId) {
+      return memoryRewardsView(detailerId);
+    },
+    async setDetailerAffiliateCode(detailerId, code) {
+      const detailer = memoryUsers.get(detailerId);
+      if (!detailer?.detailerApproved) return null;
+      const existing = memoryAffiliateCodes.get(detailerId);
+      if (existing === code) return memoryRewardsView(detailerId);
+      if (existing) throw new Error("affiliate_code_locked");
+      if ([...memoryAffiliateCodes.values()].includes(code)) {
+        throw new Error("affiliate_code_unavailable");
+      }
+      memoryAffiliateCodes.set(detailerId, code);
+      return memoryRewardsView(detailerId);
+    },
     async getAdminDashboard() {
       const visibleUsers = [...memoryUsers.values()].filter(
         ({ email }) => !email.endsWith("@staging.valx.invalid")
@@ -1912,7 +2213,11 @@ export const createMemoryRepository = (): ValxRepository => {
           capturedPayments: 0,
           paidPayouts: 0,
           openSupportRequests: 0,
-          pendingDeletionRequests: 0
+          pendingDeletionRequests: 0,
+          affiliatePointsAwarded: memoryAffiliatePoints.reduce(
+            (total, entry) => total + entry.points,
+            0
+          )
         },
         customers: customerUsers.map((customer) => ({
           id: customer.id,
@@ -1935,7 +2240,8 @@ export const createMemoryRepository = (): ValxRepository => {
             mfaRequired: true,
             createdAt: new Date().toISOString()
           })),
-        audit: []
+        audit: [],
+        affiliatePoints: memoryAffiliatePoints
       };
     },
     async createSession(userId, tokenHash, expiresAt) {
@@ -1982,6 +2288,15 @@ export const createMemoryRepository = (): ValxRepository => {
           postcode: address.postcode,
           waterAvailable: address.waterAvailable
         }));
+    },
+    async isCustomerAffiliateFirstBookingEligible(customerId) {
+      return (
+        memoryCustomerReferrals.has(customerId) &&
+        ![...memoryBookings.values()].some(
+          (booking) =>
+            booking.customerId === customerId && booking.status !== "cancelled"
+        )
+      );
     },
     async saveQuote(input) {
       const id = randomUUID();
@@ -2088,6 +2403,33 @@ export const createMemoryRepository = (): ValxRepository => {
       const booking = memoryBookings.get(bookingId);
       if (!booking || booking.detailerId !== detailerId) return null;
       booking.status = status;
+      if (status === "completed") {
+        const referredDetailerId = memoryCustomerReferrals.get(
+          booking.customerId
+        );
+        const alreadyAwarded = memoryAffiliatePoints.some(
+          (entry) => entry.customerId === booking.customerId
+        );
+        const referredDetailer = referredDetailerId
+          ? memoryUsers.get(referredDetailerId)
+          : null;
+        const customer = memoryUsers.get(booking.customerId);
+        if (referredDetailerId && referredDetailer && customer && !alreadyAwarded) {
+          memoryAffiliatePoints.unshift({
+            id: randomUUID(),
+            detailerId: referredDetailerId,
+            detailerName: referredDetailer.name,
+            detailerEmail: referredDetailer.email,
+            customerId: customer.id,
+            customerName: customer.name,
+            customerEmail: customer.email,
+            bookingId,
+            points: 10,
+            reason: "first_referred_booking_completed",
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
       return booking;
     },
     async createSupportRequest() {

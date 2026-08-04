@@ -27,6 +27,7 @@ import type {
   Booking,
   DetailerDocument,
   DetailerOnboarding,
+  DetailerRewards,
   Quote,
   Role,
   User,
@@ -56,6 +57,11 @@ const errorCopy: Record<string, string> = {
   detailer_onboarding_incomplete: "Complete every business field, declaration and required document before submitting.",
   unsupported_detailer_document: "Use a genuine PDF, JPEG or PNG file no larger than 5 MB.",
   insurance_expiry_required: "Add the insurance policy expiry date before uploading.",
+  invalid_affiliate_code: "That detailer affiliate code is not valid.",
+  invalid_affiliate_code_format: "Use 4-20 letters or numbers for your affiliate code.",
+  affiliate_code_unavailable: "That affiliate code has already been chosen.",
+  affiliate_code_locked: "Your affiliate code has already been confirmed and cannot be changed.",
+  detailer_approval_required: "Affiliate rewards unlock after ValX approves your detailer account.",
   request_failed: "ValX could not complete that request. Please try again."
 };
 
@@ -173,6 +179,7 @@ function AuthScreen({
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [affiliateCode, setAffiliateCode] = useState("");
   const [invitationToken, setInvitationToken] = useState("");
   const [actionToken, setActionToken] = useState("");
   const [water, setWater] = useState(true);
@@ -296,7 +303,8 @@ function AuthScreen({
                   phone,
                   password,
                   inviteCode,
-                  waterAvailable: water
+                  waterAvailable: water,
+                  affiliateCode: affiliateCode.trim() || undefined
                 }
               : {
                   role,
@@ -404,6 +412,14 @@ function AuthScreen({
               label="Invitation code"
               value={inviteCode}
               onChangeText={setInviteCode}
+              autoCapitalize="characters"
+            />
+          )}
+          {role === "customer" && (
+            <Field
+              label="Detailer affiliate code (optional)"
+              value={affiliateCode}
+              onChangeText={setAffiliateCode}
               autoCapitalize="characters"
             />
           )}
@@ -1105,10 +1121,12 @@ function DetailerApp({
   user: User;
   onSignedOut: () => void;
 }) {
-  const [tab, setTab] = useState<"offers" | "jobs" | "account">("offers");
+  const [tab, setTab] = useState<"offers" | "jobs" | "supplies" | "account">("offers");
   const [offers, setOffers] = useState<Booking[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [onboarding, setOnboarding] = useState<DetailerOnboarding | null>(null);
+  const [rewards, setRewards] = useState<DetailerRewards | null>(null);
+  const [affiliateCodeDraft, setAffiliateCodeDraft] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1121,6 +1139,12 @@ function DetailerApp({
     setOffers(offerData.offers);
     setBookings(bookingData.bookings);
     setOnboarding(onboardingData.onboarding);
+    if (onboardingData.onboarding.status === "approved") {
+      const rewardData = await api<{ rewards: DetailerRewards }>(
+        "/v1/detailer/rewards"
+      );
+      setRewards(rewardData.rewards);
+    }
   }, []);
 
   useEffect(() => {
@@ -1155,6 +1179,24 @@ function DetailerApp({
         body: { status }
       });
       await refresh();
+    } catch (error) {
+      setFeedback(messageFor(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmAffiliateCode = async () => {
+    setBusy(true);
+    setFeedback("");
+    try {
+      const result = await api<{ rewards: DetailerRewards }>(
+        "/v1/detailer/rewards/code",
+        { method: "PUT", body: { code: affiliateCodeDraft } }
+      );
+      setRewards(result.rewards);
+      setAffiliateCodeDraft("");
+      setFeedback("Your affiliate code is confirmed.");
     } catch (error) {
       setFeedback(messageFor(error));
     } finally {
@@ -1208,10 +1250,10 @@ function DetailerApp({
     <ScrollView contentContainerStyle={styles.screen}>
       <BrandHeader detail={`Detailer · ${user.name}`} />
       <Choice
-        values={["offers", "jobs", "account"] as const}
+        values={["offers", "jobs", "supplies", "account"] as const}
         value={tab}
         onChange={setTab}
-        labels={{ offers: "Offers", jobs: "My jobs", account: "Account" }}
+        labels={{ offers: "Offers", jobs: "My jobs", supplies: "Supplies", account: "Account" }}
       />
       {tab === "offers" && (
         <View style={styles.section}>
@@ -1229,6 +1271,65 @@ function DetailerApp({
           {bookings.length
             ? bookings.map((booking) => renderBooking(booking, false))
             : <Text style={styles.body}>You have not accepted a job yet.</Text>}
+        </View>
+      )}
+      {tab === "supplies" && (
+        <View style={styles.section}>
+          <Text style={styles.eyebrow}>AFFILIATE REWARDS</Text>
+          <Text style={styles.sectionTitle}>
+            {rewards?.pointsBalance ?? 0} points
+          </Text>
+          <Text style={styles.body}>
+            Earn 10 points once when a customer using your code completes their
+            first booking.
+          </Text>
+          <View style={styles.policyCard}>
+            <Text style={styles.cardTitle}>Your affiliate code</Text>
+            {rewards?.affiliateCode ? (
+              <>
+                <Text style={styles.sectionTitle}>{rewards.affiliateCode}</Text>
+                <Text style={styles.small}>
+                  Share this code with new customers. It is fixed after confirmation.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Field
+                  label="Choose 4-20 letters or numbers"
+                  value={affiliateCodeDraft}
+                  onChangeText={setAffiliateCodeDraft}
+                  autoCapitalize="characters"
+                />
+                <PrimaryButton
+                  label={busy ? "Confirming..." : "Confirm affiliate code"}
+                  onPress={confirmAffiliateCode}
+                  disabled={busy || !/^[a-zA-Z0-9]{4,20}$/.test(affiliateCodeDraft.trim())}
+                />
+              </>
+            )}
+          </View>
+          <View style={styles.documentCard}>
+            <Text style={styles.eyebrow}>DETAILER SUPPLIES</Text>
+            <Text style={styles.cardTitle}>Catalogue coming soon</Text>
+            <Text style={styles.body}>
+              Supplies and point prices are TBC. Points are recorded securely,
+              but redemption is not enabled yet.
+            </Text>
+          </View>
+          <Text style={styles.cardTitle}>Points history</Text>
+          {rewards?.ledger.length ? (
+            rewards.ledger.map((entry) => (
+              <View key={entry.id} style={styles.bookingCard}>
+                <Text style={styles.cardTitle}>{entry.customerName}</Text>
+                <Text style={styles.small}>
+                  First completed referred booking · {new Date(entry.createdAt).toLocaleDateString("en-GB")}
+                </Text>
+                <Text style={styles.earnings}>+{entry.points} points</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.body}>No points have been awarded yet.</Text>
+          )}
         </View>
       )}
       {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}

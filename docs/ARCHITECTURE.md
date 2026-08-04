@@ -89,6 +89,12 @@ are fetched only through an authenticated administrator route. Payment
 credentials are intentionally absent. When payments are added, only provider
 tokens and masked display values may be stored.
 
+Affiliate attribution is stored on the customer profile and points are stored
+in an append-only ledger. A unique customer constraint makes the 10-point
+first-completed-booking award idempotent even if completion is retried. Unique
+detailer codes are immutable after confirmation. Supply redemption remains
+disabled until the catalogue and point prices are approved.
+
 ## Delivery stages
 
 1. Foundation: approved imports, monorepo, rules, API adapters, schema, mock

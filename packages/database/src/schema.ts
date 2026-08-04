@@ -142,6 +142,7 @@ export const customerProfiles = pgTable("customer_profiles", {
     .references(() => users.id),
   waterAvailable: boolean("water_available").notNull(),
   affiliateCode: text("affiliate_code"),
+  referredDetailerId: uuid("referred_detailer_id").references(() => users.id),
   ...timestamps
 });
 
@@ -172,8 +173,11 @@ export const detailerProfiles = pgTable("detailer_profiles", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   reviewedBy: uuid("reviewed_by").references(() => users.id),
   reviewNotes: text("review_notes"),
+  affiliateCode: text("affiliate_code"),
   ...timestamps
-});
+}, (table) => [
+  uniqueIndex("detailer_profiles_affiliate_code_idx").on(table.affiliateCode)
+]);
 
 export const detailerInvitations = pgTable(
   "detailer_invitations",
@@ -311,6 +315,35 @@ export const bookings = pgTable(
     ...timestamps
   },
   (table) => [uniqueIndex("bookings_quote_idx").on(table.quoteId)]
+);
+
+export const affiliatePointLedger = pgTable(
+  "affiliate_point_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    detailerId: uuid("detailer_id")
+      .notNull()
+      .references(() => users.id),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id),
+    points: integer("points").notNull().default(10),
+    reason: text("reason").notNull().default("first_referred_booking_completed"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    uniqueIndex("affiliate_point_ledger_customer_idx").on(table.customerId),
+    uniqueIndex("affiliate_point_ledger_booking_idx").on(table.bookingId),
+    index("affiliate_point_ledger_detailer_idx").on(
+      table.detailerId,
+      table.createdAt
+    )
+  ]
 );
 
 export const supportRequests = pgTable(

@@ -353,6 +353,180 @@ describe("ValX API", () => {
     });
   });
 
+  it("awards exactly 10 points after a referred customer's first completed booking", async () => {
+    const detailerEmail = "affiliate.detailer@valx.test";
+    const detailerPassword = "Affiliate-detailer-2026";
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "detailer",
+        email: detailerEmail,
+        password: detailerPassword,
+        name: "Affiliate Detailer",
+        phone: "07900000001",
+        ownWaterSupply: true,
+        serviceRadiusMiles: 12,
+        vatRegistered: false
+      }
+    })).statusCode).toBe(201);
+    const detailerVerification = await verifyLatestRegistration(detailerEmail);
+    const detailerHeaders = {
+      authorization: `Bearer ${detailerVerification.json().token as string}`
+    };
+    expect(
+      await repository.approveDetailerByEmail(detailerEmail, "Affiliate test")
+    ).toBe(true);
+
+    const codeResponse = await app.inject({
+      method: "PUT",
+      url: "/v1/detailer/rewards/code",
+      headers: detailerHeaders,
+      payload: { code: "shine10" }
+    });
+    expect(codeResponse.statusCode).toBe(200);
+    expect(codeResponse.json().rewards).toMatchObject({
+      affiliateCode: "SHINE10",
+      pointsBalance: 0,
+      suppliesStatus: "tbc",
+      supplies: []
+    });
+    expect((await app.inject({
+      method: "PUT",
+      url: "/v1/detailer/rewards/code",
+      headers: detailerHeaders,
+      payload: { code: "ANOTHERCODE" }
+    })).statusCode).toBe(409);
+
+    const invalidReferral = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "customer",
+        email: "invalid.referral@valx.test",
+        password: "Invalid-referral-2026",
+        name: "Invalid Referral",
+        phone: "07100000001",
+        waterAvailable: true,
+        affiliateCode: "MISSING"
+      }
+    });
+    expect(invalidReferral.statusCode).toBe(400);
+    expect(invalidReferral.json().error).toBe("invalid_affiliate_code");
+
+    const customerEmail = "affiliate.customer@valx.test";
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "customer",
+        email: customerEmail,
+        password: "Affiliate-customer-2026",
+        name: "Referred Customer",
+        phone: "07100000002",
+        waterAvailable: true,
+        affiliateCode: "shine10"
+      }
+    })).statusCode).toBe(201);
+    const customerVerification = await verifyLatestRegistration(customerEmail);
+    const customerHeaders = {
+      authorization: `Bearer ${customerVerification.json().token as string}`
+    };
+    const vehicle = await app.inject({
+      method: "POST",
+      url: "/v1/customer/vehicles",
+      headers: customerHeaders,
+      payload: {
+        registrationNumber: "AFF10",
+        make: "Test",
+        model: "Referral",
+        type: "hatchback",
+        lookupSource: "manual"
+      }
+    });
+    const address = await app.inject({
+      method: "POST",
+      url: "/v1/customer/addresses",
+      headers: customerHeaders,
+      payload: {
+        label: "10 Affiliate Road, Portsmouth",
+        postcode: "PO1 1AA",
+        waterAvailable: true
+      }
+    });
+
+    const completeBooking = async () => {
+      const quote = await app.inject({
+        method: "POST",
+        url: "/v1/customer/quotes",
+        headers: customerHeaders,
+        payload: {
+          serviceId: "exterior-detail",
+          vehicleType: "hatchback",
+          distanceMiles: 1
+        }
+      });
+      const booking = await app.inject({
+        method: "POST",
+        url: "/v1/customer/bookings",
+        headers: customerHeaders,
+        payload: {
+          vehicleId: vehicle.json().vehicle.id,
+          addressId: address.json().address.id,
+          quoteId: quote.json().quote.id,
+          bookingType: "next_available"
+        }
+      });
+      const bookingId = booking.json().booking.id as string;
+      expect((await app.inject({
+        method: "POST",
+        url: `/v1/detailer/bookings/${bookingId}/accept`,
+        headers: detailerHeaders
+      })).statusCode).toBe(200);
+      for (const status of ["on_way", "arrived", "in_progress", "completed"]) {
+        expect((await app.inject({
+          method: "PATCH",
+          url: `/v1/detailer/bookings/${bookingId}/status`,
+          headers: detailerHeaders,
+          payload: { status }
+        })).statusCode).toBe(200);
+      }
+      return {
+        bookingId,
+        affiliateDiscount: quote.json().quote.affiliateDiscount as number
+      };
+    };
+
+    const firstBooking = await completeBooking();
+    expect(firstBooking.affiliateDiscount).toBeGreaterThan(0);
+    let rewards = await app.inject({
+      method: "GET",
+      url: "/v1/detailer/rewards",
+      headers: detailerHeaders
+    });
+    expect(rewards.json().rewards).toMatchObject({
+      pointsBalance: 10,
+      pointsPerFirstBooking: 10
+    });
+    expect(rewards.json().rewards.ledger).toHaveLength(1);
+    expect(rewards.json().rewards.ledger[0]).toMatchObject({
+      bookingId: firstBooking.bookingId,
+      customerName: "Referred Customer",
+      points: 10,
+      reason: "first_referred_booking_completed"
+    });
+
+    const secondBooking = await completeBooking();
+    expect(secondBooking.affiliateDiscount).toBe(0);
+    rewards = await app.inject({
+      method: "GET",
+      url: "/v1/detailer/rewards",
+      headers: detailerHeaders
+    });
+    expect(rewards.json().rewards.pointsBalance).toBe(10);
+    expect(rewards.json().rewards.ledger).toHaveLength(1);
+  });
+
   it("verifies email and securely resets a forgotten password", async () => {
     const email = "auth.security@valx.test";
     const originalPassword = "Original-password-2026";

@@ -79,6 +79,20 @@ customer paying a detailer and ValX deducting commission.
 8. Manage schedule, activity, affiliate rewards, supplies, insurance, VAT,
    radius, water status, profile, and payout account.
 
+### Affiliate points
+
+- Each approved detailer may confirm one unique, permanent affiliate code of
+  4-20 letters or numbers.
+- A new customer may provide that code during registration. The referral is
+  permanently attributed to the detailer and cannot be changed later.
+- The customer receives the approved 10% discount on their first service.
+- The detailer receives 10 points exactly once, only after that customer's
+  first booking reaches `completed`.
+- Registration, cancellation and every subsequent booking award no points.
+- Points are not commission, cash or a payout. They will be redeemable only in
+  the detailer supplies section. Catalogue items and point prices remain TBC,
+  so redemption is disabled until a catalogue is approved.
+
 ## Admin journey
 
 1. Sign in with an approved administrator account and complete MFA.
@@ -120,4 +134,3 @@ customer paying a detailer and ValX deducting commission.
 - Declined detailer documents: delete 90 days after final decision.
 - Exports exclude full card and bank credentials.
 - Deletion requests preserve only statutory or active-dispute holds.
-

@@ -44,3 +44,14 @@ export const detailerPolicies = {
     "Check the subcontractor agreement and VAT status at onboarding and regularly thereafter. Non-VAT detailers receive a settlement statement."
 } as const;
 
+export const affiliateRewardPolicies = {
+  customerFirstServiceDiscountRate: 0.1,
+  detailerPointsPerFirstCompletedReferral: 10,
+  awardTrigger:
+    "Award once when the referred customer's first booking reaches completed status.",
+  exclusions:
+    "Registration alone, cancelled bookings and every later booking award no points.",
+  rewardType:
+    "Points for the ValX detailer supplies section only; no commission or cash payout.",
+  suppliesCatalogue: "Products and point prices are TBC. Redemption is disabled."
+} as const;

@@ -68,6 +68,14 @@ const routeInput = z.object({
   destinationPlaceId: z.string().min(1)
 });
 
+const affiliateCodeValue = z
+  .string()
+  .trim()
+  .min(4)
+  .max(20)
+  .regex(/^[a-zA-Z0-9]+$/)
+  .transform((value) => value.toUpperCase());
+
 const registrationInput = z.discriminatedUnion("role", [
   z.object({
     role: z.literal("customer"),
@@ -77,7 +85,7 @@ const registrationInput = z.discriminatedUnion("role", [
     phone: z.string().trim().min(7).max(24),
     inviteCode: z.string().optional(),
     waterAvailable: z.boolean(),
-    affiliateCode: z.string().trim().max(40).optional()
+    affiliateCode: affiliateCodeValue.optional()
   }),
   z.object({
     role: z.literal("detailer"),
@@ -99,6 +107,8 @@ const loginInput = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(128)
 });
+
+const affiliateCodeInput = z.object({ code: affiliateCodeValue });
 
 const adminMfaInput = z.object({
   email: z.string().email(),
@@ -469,6 +479,9 @@ export const createApp = async (
       if (error instanceof Error && error.message === "invalid_detailer_invitation") {
         return reply.code(403).send({ error: "invalid_detailer_invitation" });
       }
+      if (error instanceof Error && error.message === "invalid_affiliate_code") {
+        return reply.code(400).send({ error: "invalid_affiliate_code" });
+      }
       return reply.code(409).send({ error: "account_already_exists" });
     }
     }
@@ -719,6 +732,45 @@ export const createApp = async (
     return { onboarding };
   });
 
+  app.get("/v1/detailer/rewards", async (request, reply) => {
+    const detailer = await authenticatedUser(request, reply, ["detailer"]);
+    if (!detailer) return;
+    const rewards = await data.getDetailerRewards(detailer.id);
+    if (!rewards) {
+      return reply.code(403).send({ error: "detailer_approval_required" });
+    }
+    return { rewards };
+  });
+
+  app.put("/v1/detailer/rewards/code", async (request, reply) => {
+    const detailer = await authenticatedUser(request, reply, ["detailer"]);
+    if (!detailer) return;
+    const parsed = affiliateCodeInput.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_affiliate_code_format" });
+    }
+    try {
+      const rewards = await data.setDetailerAffiliateCode(
+        detailer.id,
+        parsed.data.code
+      );
+      if (!rewards) {
+        return reply.code(403).send({ error: "detailer_approval_required" });
+      }
+      return { rewards };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        ["affiliate_code_locked", "affiliate_code_unavailable"].includes(
+          error.message
+        )
+      ) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
   app.patch("/v1/detailer/onboarding", async (request, reply) => {
     const detailer = await authenticatedUser(request, reply, ["detailer"]);
     if (!detailer) return;
@@ -944,7 +996,12 @@ export const createApp = async (
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_quote_request" });
     }
-    const quote = calculateQuote(parsed.data);
+    const affiliateFirstService =
+      await data.isCustomerAffiliateFirstBookingEligible(user.id);
+    const quote = calculateQuote({
+      ...parsed.data,
+      affiliateFirstService
+    });
     const expiresAt = new Date(Date.now() + 15 * 60 * 1_000);
     const saved = await data.saveQuote({
       customerId: user.id,

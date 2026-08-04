@@ -84,3 +84,21 @@ export type DetailerOnboarding = {
   reviewNotes: string | null;
   documents: DetailerDocument[];
 };
+
+export type AffiliatePointEntry = {
+  id: string;
+  customerName: string;
+  bookingId: string;
+  points: number;
+  reason: "first_referred_booking_completed";
+  createdAt: string;
+};
+
+export type DetailerRewards = {
+  affiliateCode: string | null;
+  pointsBalance: number;
+  pointsPerFirstBooking: 10;
+  suppliesStatus: "tbc";
+  supplies: [];
+  ledger: AffiliatePointEntry[];
+};
