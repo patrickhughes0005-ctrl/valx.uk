@@ -36,6 +36,7 @@ const environment = z.object({
   BETA_ALLOWED_EMAILS: z.string().default(""),
   SUPPORT_EMAIL: z.string().email().default("support@example.invalid"),
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  ADMIN_APP_URL: z.string().url().default("http://localhost:3001"),
   DVLA_MODE: z.enum(["mock", "live"]).default("mock"),
   DVLA_API_BASE_URL: z
     .string()

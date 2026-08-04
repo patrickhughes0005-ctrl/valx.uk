@@ -33,6 +33,19 @@ const latestToken = (
   return token;
 };
 
+const latestActionUrl = (
+  to: string,
+  kind: "verify_email" | "reset_password"
+) => {
+  const message = emailDelivery.messages.findLast(
+    (candidate) => candidate.to === to && candidate.kind === kind
+  );
+  if (!message || message.kind === "admin_mfa") {
+    throw new Error(`Missing ${kind} email for ${to}`);
+  }
+  return new URL(message.actionUrl);
+};
+
 const latestAdminMfaCode = (to: string) => {
   const message = emailDelivery.messages.findLast(
     (candidate) => candidate.to === to && candidate.kind === "admin_mfa"
@@ -398,6 +411,18 @@ describe("ValX API", () => {
       name: "Admin Security",
       passwordHash: await hashPassword(password)
     });
+
+    const resetRequest = await app.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email }
+    });
+    expect(resetRequest.statusCode).toBe(202);
+    const resetUrl = latestActionUrl(email, "reset_password");
+    expect(resetUrl.origin).toBe("http://localhost:3001");
+    expect(resetUrl.pathname).toBe("/reset-password");
+    expect(resetUrl.searchParams.get("token")).toBeTruthy();
+    expect(resetUrl.hash).toBe("");
 
     const genericLogin = await app.inject({
       method: "POST",

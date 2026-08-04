@@ -36,6 +36,7 @@ services:
       BETA_ALLOWED_EMAILS: ${BETA_ALLOWED_EMAILS:-}
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:?required}
       PUBLIC_APP_URL: ${STAGING_APP_URL:?required}
+      ADMIN_APP_URL: ${STAGING_ADMIN_URL:?required}
       AUTH_EMAIL_MODE: ${AUTH_EMAIL_MODE:?required}
       SMTP_HOST: ${SMTP_HOST:?required}
       SMTP_PORT: ${SMTP_PORT:-587}

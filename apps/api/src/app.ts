@@ -263,10 +263,21 @@ export const createApp = async (
       tokenHash: hashOneTimeToken(token, config.AUTH_TOKEN_PEPPER),
       expiresAt: new Date(Date.now() + expiresInMinutes * 60 * 1_000)
     });
+    const isAdminPasswordReset =
+      purpose === "reset_password" && user.role === "admin";
     const path =
       purpose === "verify_email" ? "/verify-email" : "/reset-password";
-    const actionUrl = new URL(config.PUBLIC_APP_URL);
-    actionUrl.hash = `${path}?token=${encodeURIComponent(token)}`;
+    const actionUrl = new URL(
+      isAdminPasswordReset ? config.ADMIN_APP_URL : config.PUBLIC_APP_URL
+    );
+    if (isAdminPasswordReset) {
+      actionUrl.pathname = path;
+      actionUrl.search = "";
+      actionUrl.hash = "";
+      actionUrl.searchParams.set("token", token);
+    } else {
+      actionUrl.hash = `${path}?token=${encodeURIComponent(token)}`;
+    }
     await authEmail.send({
       kind: purpose,
       to: user.email,
