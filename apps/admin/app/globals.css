@@ -23,7 +23,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { 
 .mfa-input input { height:54px; padding:0 16px; border:1px solid #384038; border-radius:13px; outline:0; background:#101410; color:white; font-size:22px; font-weight:900; letter-spacing:.35em; text-align:center; }
 .mfa-input input:focus { border-color:var(--lime); box-shadow:0 0 0 3px rgba(255,138,31,.08); }
 .mfa-button { width:100%; border:0; cursor:pointer; }
+.primary-action:disabled { opacity:.55; cursor:not-allowed; }
 .mfa-error { margin:0 0 10px!important; color:var(--red)!important; font-size:8px!important; }
+.admin-login-fields { margin:24px 0 12px; display:grid; gap:14px; }
+.admin-login-fields label { display:grid; gap:8px; color:#a7afa5; font-size:8px; font-weight:900; letter-spacing:.06em; text-align:left; }
+.admin-login-fields input { height:50px; padding:0 14px; border:1px solid #384038; border-radius:13px; outline:0; background:#101410; color:white; font-size:14px; }
+.admin-login-fields input:focus { border-color:var(--lime); box-shadow:0 0 0 3px rgba(255,138,31,.08); }
+.admin-login-fields .mfa-input { margin:0; }
+.admin-login-fields .mfa-input input { height:54px; font-size:22px; font-weight:900; letter-spacing:.35em; text-align:center; }
+.auth-notice { margin:0 0 10px!important; color:#ffb36e!important; font-size:8px!important; }
+.auth-link { margin:12px auto 0; padding:4px; border:0; background:transparent; color:#aeb5ac; font-size:9px; text-decoration:underline; }
 .demo-code { display:block; margin-top:12px; color:#7d857b; font-size:7px; font-weight:900; text-align:center; letter-spacing:.09em; }
 
 .admin-shell { min-height:100vh; display:grid; grid-template-columns:260px 1fr; background:radial-gradient(circle at 100% 0,rgba(255,138,31,.05),transparent 30%),var(--bg); }
@@ -48,7 +57,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { 
 .signed-in strong,.signed-in small { display:block; }
 .signed-in strong { font-size:9px; }
 .signed-in small { max-width:115px; margin-top:3px; overflow:hidden; color:#6f776f; font-size:6px; text-overflow:ellipsis; }
-.signed-in a { color:#8d958c; font-size:7px; text-decoration:none; }
+.signed-in button { padding:0; border:0; background:transparent; color:#8d958c; font-size:7px; }
 
 .workspace { min-width:0; padding:34px 38px 60px; }
 .workspace-head { min-height:72px; margin-bottom:28px; display:flex; justify-content:space-between; align-items:flex-start; }
@@ -198,7 +207,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { 
 @media(max-width:1050px) {
   .admin-shell { grid-template-columns:76px 1fr; }
   .sidebar { padding-left:12px; padding-right:12px; }
-  .brand { padding-left:6px; }.brand>div,.nav-group>p,.nav-group button span,.nav-group button em,.signed-in>div,.signed-in a { display:none; }
+  .brand { padding-left:6px; }.brand>div,.nav-group>p,.nav-group button span,.nav-group button em,.signed-in>div,.signed-in button { display:none; }
   .nav-group button { grid-template-columns:1fr; justify-items:center; padding:0; }
   .signed-in { display:flex; justify-content:center; }
   .overview-grid,.finance-grid { grid-template-columns:1fr; }

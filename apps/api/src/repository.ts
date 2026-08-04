@@ -33,7 +33,10 @@ export type UserRecord = {
   emailVerifiedAt: Date | null;
 };
 
-export type AuthTokenPurpose = "verify_email" | "reset_password";
+export type AuthTokenPurpose =
+  | "verify_email"
+  | "reset_password"
+  | "admin_mfa";
 
 export type BookingView = {
   id: string;
@@ -90,6 +93,11 @@ export interface ValxRepository {
   close(): Promise<void>;
   healthcheck(): Promise<void>;
   createUser(input: RegistrationInput): Promise<UserRecord>;
+  createAdmin(input: {
+    email: string;
+    name: string;
+    passwordHash: string;
+  }): Promise<UserRecord>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
   createAuthToken(input: {
     userId: string;
@@ -97,6 +105,10 @@ export interface ValxRepository {
     tokenHash: string;
     expiresAt: Date;
   }): Promise<void>;
+  consumeAuthToken(
+    tokenHash: string,
+    purpose: AuthTokenPurpose
+  ): Promise<UserRecord | null>;
   verifyEmail(tokenHash: string): Promise<UserRecord | null>;
   resetPassword(tokenHash: string, passwordHash: string): Promise<boolean>;
   approveDetailerByEmail(email: string, operator: string): Promise<boolean>;
@@ -322,6 +334,60 @@ export const createPostgresRepository = (
         };
       });
     },
+    async createAdmin(input) {
+      return db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(users)
+          .where(and(eq(users.email, input.email), isNull(users.deletedAt)))
+          .limit(1);
+        if (existing) {
+          if (existing.role !== "admin") {
+            throw new Error("email_belongs_to_non_admin");
+          }
+          return {
+            id: existing.id,
+            role: existing.role,
+            email: existing.email,
+            name: existing.name,
+            phone: existing.phone,
+            passwordHash: existing.passwordHash,
+            emailVerifiedAt: existing.emailVerifiedAt
+          };
+        }
+
+        const now = new Date();
+        const [user] = await tx
+          .insert(users)
+          .values({
+            role: "admin",
+            email: input.email,
+            name: input.name,
+            phone: null,
+            passwordHash: input.passwordHash,
+            emailVerifiedAt: now,
+            mfaRequired: true
+          })
+          .returning();
+        if (!user) throw new Error("admin_not_created");
+        await tx.insert(auditLog).values({
+          actorId: user.id,
+          action: "admin.bootstrapped",
+          subjectType: "user",
+          subjectId: user.id,
+          metadata: { mfaRequired: true }
+        });
+        return {
+          id: user.id,
+          role: user.role,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          passwordHash: user.passwordHash,
+          emailVerifiedAt: user.emailVerifiedAt
+        };
+      });
+    },
     async findUserByEmail(email) {
       const [user] = await db
         .select()
@@ -342,6 +408,50 @@ export const createPostgresRepository = (
     },
     async createAuthToken(input) {
       await db.insert(authTokens).values(input);
+    },
+    async consumeAuthToken(tokenHash, purpose) {
+      return db.transaction(async (tx) => {
+        const now = new Date();
+        const [token] = await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.tokenHash, tokenHash),
+              eq(authTokens.purpose, purpose),
+              gt(authTokens.expiresAt, now),
+              isNull(authTokens.usedAt)
+            )
+          )
+          .returning({ userId: authTokens.userId });
+        if (!token) return null;
+        await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.userId, token.userId),
+              eq(authTokens.purpose, purpose),
+              isNull(authTokens.usedAt)
+            )
+          );
+        const [user] = await tx
+          .select()
+          .from(users)
+          .where(and(eq(users.id, token.userId), isNull(users.deletedAt)))
+          .limit(1);
+        return user
+          ? {
+              id: user.id,
+              role: user.role,
+              email: user.email,
+              name: user.name,
+              phone: user.phone,
+              passwordHash: user.passwordHash,
+              emailVerifiedAt: user.emailVerifiedAt
+            }
+          : null;
+      });
     },
     async verifyEmail(tokenHash) {
       return db.transaction(async (tx) => {
@@ -807,8 +917,10 @@ export const createPostgresRepository = (
   };
 };
 
-type MemoryUser = UserRecord &
-  RegistrationInput & { detailerApproved: boolean };
+type MemoryUser = UserRecord & {
+  detailerApproved: boolean;
+  ownWaterSupply?: boolean;
+};
 type MemoryQuote = {
   id: string;
   customerId: string;
@@ -877,6 +989,29 @@ export const createMemoryRepository = (): ValxRepository => {
       memoryUsers.set(user.id, user);
       return user;
     },
+    async createAdmin(input) {
+      const existing = [...memoryUsers.values()].find(
+        (user) => user.email === input.email
+      );
+      if (existing) {
+        if (existing.role !== "admin") {
+          throw new Error("email_belongs_to_non_admin");
+        }
+        return existing;
+      }
+      const user: MemoryUser = {
+        id: randomUUID(),
+        role: "admin",
+        email: input.email,
+        name: input.name,
+        phone: null,
+        passwordHash: input.passwordHash,
+        emailVerifiedAt: new Date(),
+        detailerApproved: false
+      };
+      memoryUsers.set(user.id, user);
+      return user;
+    },
     async findUserByEmail(email) {
       return (
         [...memoryUsers.values()].find((user) => user.email === email) ?? null
@@ -889,6 +1024,24 @@ export const createMemoryRepository = (): ValxRepository => {
         expiresAt: input.expiresAt,
         used: false
       });
+    },
+    async consumeAuthToken(tokenHash, purpose) {
+      const token = oneTimeTokens.get(tokenHash);
+      if (
+        !token ||
+        token.used ||
+        token.purpose !== purpose ||
+        token.expiresAt <= new Date()
+      ) {
+        return null;
+      }
+      token.used = true;
+      for (const candidate of oneTimeTokens.values()) {
+        if (candidate.userId === token.userId && candidate.purpose === purpose) {
+          candidate.used = true;
+        }
+      }
+      return memoryUsers.get(token.userId) ?? null;
     },
     async verifyEmail(tokenHash) {
       const token = oneTimeTokens.get(tokenHash);

@@ -3,6 +3,7 @@ import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { CaptureAuthEmailDelivery } from "../src/email";
 import { createMemoryRepository } from "../src/repository";
+import { hashPassword } from "../src/security";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -22,11 +23,24 @@ const latestToken = (
     (candidate) => candidate.to === to && candidate.kind === kind
   );
   if (!message) throw new Error(`Missing ${kind} email for ${to}`);
+  if (message.kind === "admin_mfa") {
+    throw new Error(`Expected an action-link email for ${to}`);
+  }
   const actionUrl = new URL(message.actionUrl);
   const fragmentUrl = new URL(actionUrl.hash.slice(1), "https://valx.test");
   const token = fragmentUrl.searchParams.get("token");
   if (!token) throw new Error(`Missing token in ${kind} email`);
   return token;
+};
+
+const latestAdminMfaCode = (to: string) => {
+  const message = emailDelivery.messages.findLast(
+    (candidate) => candidate.to === to && candidate.kind === "admin_mfa"
+  );
+  if (!message || message.kind !== "admin_mfa") {
+    throw new Error(`Missing admin MFA email for ${to}`);
+  }
+  return message.code;
 };
 
 const verifyLatestRegistration = async (email: string) =>
@@ -374,6 +388,63 @@ describe("ValX API", () => {
       payload: { token: resetToken, password: originalPassword }
     });
     expect(reusedReset.statusCode).toBe(400);
+  });
+
+  it("requires one-time email MFA for administrator sign-in", async () => {
+    const email = "admin.security@valx.test";
+    const password = "Admin-password-2026";
+    await repository.createAdmin({
+      email,
+      name: "Admin Security",
+      passwordHash: await hashPassword(password)
+    });
+
+    const genericLogin = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email, password }
+    });
+    expect(genericLogin.statusCode).toBe(403);
+    expect(genericLogin.json().error).toBe("admin_login_required");
+
+    const adminLogin = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/login",
+      payload: { email, password }
+    });
+    expect(adminLogin.statusCode).toBe(202);
+    expect(adminLogin.json()).toEqual({ accepted: true });
+
+    const code = latestAdminMfaCode(email);
+    const wrongCode = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/verify-mfa",
+      payload: { email, code: code === "000000" ? "999999" : "000000" }
+    });
+    expect(wrongCode.statusCode).toBe(401);
+
+    const verified = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/verify-mfa",
+      payload: { email, code }
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json().user.role).toBe("admin");
+
+    const session = await app.inject({
+      method: "GET",
+      url: "/v1/me",
+      headers: { authorization: `Bearer ${verified.json().token}` }
+    });
+    expect(session.statusCode).toBe(200);
+    expect(session.json().user.email).toBe(email);
+
+    const reusedCode = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/verify-mfa",
+      payload: { email, code }
+    });
+    expect(reusedCode.statusCode).toBe(401);
   });
 
   it("queues support and account deletion, then revokes the session", async () => {

@@ -26,6 +26,7 @@ import {
 } from "./repository.js";
 import {
   constantTimeTextEqual,
+  createAdminMfaCode,
   createOneTimeToken,
   createSessionToken,
   hashOneTimeToken,
@@ -93,6 +94,11 @@ const registrationInput = z.discriminatedUnion("role", [
 const loginInput = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(128)
+});
+
+const adminMfaInput = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/)
 });
 
 const authTokenInput = z.object({
@@ -278,6 +284,31 @@ export const createApp = async (
       return true;
     } catch {
       app.log.error("Authentication email delivery failed");
+      return false;
+    }
+  };
+
+  const trySendAdminMfaEmail = async (user: UserRecord) => {
+    const code = createAdminMfaCode();
+    await data.createAuthToken({
+      userId: user.id,
+      purpose: "admin_mfa",
+      tokenHash: hashOneTimeToken(
+        `${normaliseEmail(user.email)}:${code}`,
+        config.AUTH_TOKEN_PEPPER
+      ),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1_000)
+    });
+    try {
+      await authEmail.send({
+        kind: "admin_mfa",
+        to: user.email,
+        code,
+        expiresInMinutes: 10
+      });
+      return true;
+    } catch {
+      app.log.error("Administrator MFA email delivery failed");
       return false;
     }
   };
@@ -474,7 +505,68 @@ export const createApp = async (
     if (!user.emailVerifiedAt) {
       return reply.code(403).send({ error: "email_verification_required" });
     }
+    if (user.role === "admin") {
+      return reply.code(403).send({ error: "admin_login_required" });
+    }
     return issueSession(user);
+    }
+  );
+
+  app.post(
+    "/v1/admin/auth/login",
+    {
+      config: {
+        rateLimit: {
+          max: config.NODE_ENV === "test" ? 10_000 : 5,
+          timeWindow: "15 minutes"
+        }
+      }
+    },
+    async (request, reply) => {
+      const parsed = loginInput.safeParse(request.body);
+      if (parsed.success) {
+        const user = await data.findUserByEmail(
+          normaliseEmail(parsed.data.email)
+        );
+        if (
+          user?.role === "admin" &&
+          user.emailVerifiedAt &&
+          (await verifyPassword(parsed.data.password, user.passwordHash))
+        ) {
+          await trySendAdminMfaEmail(user);
+        }
+      }
+      return reply.code(202).send({ accepted: true });
+    }
+  );
+
+  app.post(
+    "/v1/admin/auth/verify-mfa",
+    {
+      config: {
+        rateLimit: {
+          max: config.NODE_ENV === "test" ? 10_000 : 5,
+          timeWindow: "15 minutes"
+        }
+      }
+    },
+    async (request, reply) => {
+      const parsed = adminMfaInput.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_mfa_code" });
+      }
+      const email = normaliseEmail(parsed.data.email);
+      const user = await data.consumeAuthToken(
+        hashOneTimeToken(
+          `${email}:${parsed.data.code}`,
+          config.AUTH_TOKEN_PEPPER
+        ),
+        "admin_mfa"
+      );
+      if (!user || user.role !== "admin") {
+        return reply.code(401).send({ error: "invalid_mfa_code" });
+      }
+      return issueSession(user);
     }
   );
 

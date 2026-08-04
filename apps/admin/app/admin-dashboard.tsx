@@ -96,7 +96,7 @@ const navGroups: { title: string; items: Section[] }[] = [
 
 const listData: Partial<Record<Section, RecordItem[]>> = { detailers, customers, payments, payouts, jobs, issues, documents, data: dataRequests, reconciliation, audit: auditLog };
 
-export default function AdminDashboard({ signedInEmail, signOutHref }: { signedInEmail: string; signOutHref: string }) {
+export default function AdminDashboard({ signedInEmail, onSignOut }: { signedInEmail: string; onSignOut: () => void | Promise<void> }) {
   const [section, setSection] = useState<Section>("overview");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<RecordItem | null>(null);
@@ -108,7 +108,7 @@ export default function AdminDashboard({ signedInEmail, signOutHref }: { signedI
     let timeout: number | undefined;
     const resetTimeout = () => {
       window.clearTimeout(timeout);
-      timeout = window.setTimeout(() => window.location.assign(signOutHref), 15 * 60 * 1000);
+      timeout = window.setTimeout(() => void onSignOut(), 15 * 60 * 1000);
     };
     const events: (keyof WindowEventMap)[] = ["click", "keydown", "pointermove", "scroll"];
     events.forEach((event) => window.addEventListener(event, resetTimeout, { passive: true }));
@@ -117,7 +117,7 @@ export default function AdminDashboard({ signedInEmail, signOutHref }: { signedI
       window.clearTimeout(timeout);
       events.forEach((event) => window.removeEventListener(event, resetTimeout));
     };
-  }, [signOutHref]);
+  }, [onSignOut]);
 
   const records = listData[section] ?? [];
   const filtered = useMemo(() => records.filter((item) => `${item.id} ${item.title} ${item.subtitle} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [records, query]);
@@ -145,7 +145,7 @@ export default function AdminDashboard({ signedInEmail, signOutHref }: { signedI
         <nav>
           {navGroups.map((group) => <div className="nav-group" key={group.title}><p>{group.title}</p>{group.items.map((item) => <button className={section === item ? "active" : ""} key={item} onClick={() => { setSection(item); setSelected(null); setQuery(""); }}><b>{sectionMeta[item].short}</b><span>{sectionMeta[item].label}</span>{item === "issues" && <em>2</em>}</button>)}</div>)}
         </nav>
-        <div className="signed-in"><span>RT</span><div><strong>Owner</strong><small>{signedInEmail}</small></div><a href={signOutHref}>Sign out</a></div>
+        <div className="signed-in"><span>RT</span><div><strong>Owner</strong><small>{signedInEmail}</small></div><button type="button" onClick={() => void onSignOut()}>Sign out</button></div>
       </aside>
 
       <section className="workspace">

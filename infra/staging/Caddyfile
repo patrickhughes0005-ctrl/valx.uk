@@ -1,0 +1,30 @@
+{
+	email support@valx.uk
+	admin off
+}
+
+(valx_security) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+app.valx.uk {
+	import valx_security
+	reverse_proxy 127.0.0.1:8080
+}
+
+admin.valx.uk {
+	import valx_security
+	header X-Robots-Tag "noindex, nofollow, noarchive"
+	reverse_proxy 127.0.0.1:3000
+}
+
+api.valx.uk {
+	import valx_security
+	reverse_proxy 127.0.0.1:4000
+}

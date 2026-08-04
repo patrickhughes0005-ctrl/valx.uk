@@ -1,12 +1,19 @@
 import nodemailer from "nodemailer";
 import type { ApiConfig } from "./config.js";
 
-export type AuthEmailMessage = {
-  kind: "verify_email" | "reset_password";
-  to: string;
-  actionUrl: string;
-  expiresInMinutes: number;
-};
+export type AuthEmailMessage =
+  | {
+      kind: "verify_email" | "reset_password";
+      to: string;
+      actionUrl: string;
+      expiresInMinutes: number;
+    }
+  | {
+      kind: "admin_mfa";
+      to: string;
+      code: string;
+      expiresInMinutes: number;
+    };
 
 export interface AuthEmailDelivery {
   send(message: AuthEmailMessage): Promise<void>;
@@ -49,6 +56,17 @@ export const createAuthEmailDelivery = (
 
   return {
     async send(message) {
+      if (message.kind === "admin_mfa") {
+        await transport.sendMail({
+          from: config.SMTP_FROM,
+          to: message.to,
+          subject: "Your ValX Admin sign-in code",
+          text: `Your ValX Admin sign-in code is ${message.code}.\n\nIt expires in ${message.expiresInMinutes} minutes. If you did not try to sign in, contact support immediately.`,
+          html: `<p>Your ValX Admin sign-in code is:</p><p style="font-size: 28px; font-weight: 700; letter-spacing: 6px">${escapeHtml(message.code)}</p><p>It expires in ${message.expiresInMinutes} minutes. If you did not try to sign in, contact support immediately.</p>`
+        });
+        return;
+      }
+
       const verification = message.kind === "verify_email";
       const title = verification
         ? "Verify your ValX email address"

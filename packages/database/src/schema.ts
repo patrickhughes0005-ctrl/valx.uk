@@ -45,7 +45,8 @@ export const deletionRequestStatus = pgEnum("deletion_request_status", [
 ]);
 export const authTokenPurpose = pgEnum("auth_token_purpose", [
   "verify_email",
-  "reset_password"
+  "reset_password",
+  "admin_mfa"
 ]);
 
 const timestamps = {

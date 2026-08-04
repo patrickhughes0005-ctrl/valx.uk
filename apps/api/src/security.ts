@@ -1,6 +1,7 @@
 import {
   createHmac,
   randomBytes,
+  randomInt,
   scrypt as nodeScrypt,
   timingSafeEqual
 } from "node:crypto";
@@ -32,6 +33,9 @@ export const verifyPassword = async (password: string, encoded: string) => {
 export const createSessionToken = () => randomBytes(32).toString("base64url");
 
 export const createOneTimeToken = () => randomBytes(32).toString("base64url");
+
+export const createAdminMfaCode = () =>
+  randomInt(0, 1_000_000).toString().padStart(6, "0");
 
 export const hashSessionToken = (token: string, pepper: string) =>
   createHmac("sha256", pepper).update(token).digest("hex");
