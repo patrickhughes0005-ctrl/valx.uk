@@ -797,6 +797,12 @@ export const createApp = async (
     return { detailers: await data.listAdminDetailers() };
   });
 
+  app.get("/v1/admin/dashboard", async (request, reply) => {
+    const admin = await authenticatedUser(request, reply, ["admin"]);
+    if (!admin) return;
+    return { dashboard: await data.getAdminDashboard() };
+  });
+
   app.patch("/v1/admin/detailers/:detailerId/review", async (request, reply) => {
     const admin = await authenticatedUser(request, reply, ["admin"]);
     if (!admin) return;

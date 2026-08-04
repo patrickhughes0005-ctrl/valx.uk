@@ -20,7 +20,7 @@ import type {
   ServiceId,
   VehicleType
 } from "@valx/pricing-policy";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, notLike, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export type Role = "customer" | "detailer" | "admin";
@@ -136,6 +136,67 @@ export type DetailerOnboardingView = {
   documents: DetailerDocumentView[];
 };
 
+export type AdminDashboardView = {
+  generatedAt: string;
+  paymentsConnected: false;
+  metrics: {
+    customers: number;
+    detailers: number;
+    approvedDetailers: number;
+    bookings: number;
+    activeBookings: number;
+    completedBookings: number;
+    bookingRequestValue: number;
+    projectedDetailerCost: number;
+    projectedContribution: number;
+    capturedPayments: number;
+    paidPayouts: number;
+    openSupportRequests: number;
+    pendingDeletionRequests: number;
+  };
+  customers: Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    vehicleCount: number;
+    bookingCount: number;
+    createdAt: string;
+  }>;
+  bookings: BookingView[];
+  supportRequests: Array<{
+    id: string;
+    userEmail: string | null;
+    category: string;
+    message: string;
+    status: string;
+    createdAt: string;
+  }>;
+  deletionRequests: Array<{
+    id: string;
+    userEmail: string | null;
+    status: string;
+    reason: string | null;
+    requestedAt: string;
+  }>;
+  admins: Array<{
+    id: string;
+    name: string;
+    email: string;
+    mfaRequired: boolean;
+    createdAt: string;
+  }>;
+  audit: Array<{
+    id: string;
+    actorEmail: string | null;
+    action: string;
+    subjectType: string;
+    subjectId: string;
+    metadata: unknown;
+    createdAt: string;
+  }>;
+};
+
 export interface ValxRepository {
   close(): Promise<void>;
   healthcheck(): Promise<void>;
@@ -205,6 +266,7 @@ export interface ValxRepository {
     originalName: string;
     mimeType: string;
   } | null>;
+  getAdminDashboard(): Promise<AdminDashboardView>;
   createSession(
     userId: string,
     tokenHash: string,
@@ -904,7 +966,13 @@ export const createPostgresRepository = (
       const rows = await db
         .select({ id: users.id })
         .from(users)
-        .where(and(eq(users.role, "detailer"), isNull(users.deletedAt)))
+        .where(
+          and(
+            eq(users.role, "detailer"),
+            isNull(users.deletedAt),
+            notLike(users.email, "%@staging.valx.invalid")
+          )
+        )
         .orderBy(desc(users.createdAt));
       return (await Promise.all(rows.map(({ id }) => onboardingView(id)))).filter(
         (item): item is DetailerOnboardingView => item !== null
@@ -963,6 +1031,184 @@ export const createPostgresRepository = (
         .where(eq(detailerDocuments.id, documentId))
         .limit(1);
       return document ?? null;
+    },
+    async getAdminDashboard() {
+      const realAccount = notLike(users.email, "%@staging.valx.invalid");
+      const customerRows = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          phone: users.phone,
+          createdAt: users.createdAt
+        })
+        .from(users)
+        .where(
+          and(
+            eq(users.role, "customer"),
+            isNull(users.deletedAt),
+            realAccount
+          )
+        )
+        .orderBy(desc(users.createdAt));
+      const vehicleCounts = await db
+        .select({
+          customerId: vehicles.customerId,
+          count: sql<number>`count(*)::int`
+        })
+        .from(vehicles)
+        .groupBy(vehicles.customerId);
+      const bookingCounts = await db
+        .select({
+          customerId: bookings.customerId,
+          count: sql<number>`count(*)::int`
+        })
+        .from(bookings)
+        .groupBy(bookings.customerId);
+      const vehicleCountByCustomer = new Map(
+        vehicleCounts.map(({ customerId, count }) => [customerId, numberValue(count)])
+      );
+      const bookingCountByCustomer = new Map(
+        bookingCounts.map(({ customerId, count }) => [customerId, numberValue(count)])
+      );
+
+      const bookingRows = await db
+        .select({
+          id: bookings.id,
+          status: bookings.status,
+          customerTotal: quotes.customerTotal,
+          detailerEarnings: quotes.detailerEarnings,
+          paymentState: bookings.paymentState
+        })
+        .from(bookings)
+        .innerJoin(quotes, eq(bookings.quoteId, quotes.id))
+        .innerJoin(users, eq(bookings.customerId, users.id))
+        .where(realAccount)
+        .orderBy(desc(bookings.createdAt));
+      const bookingViews = (
+        await Promise.all(bookingRows.map(({ id }) => bookingView(id)))
+      ).filter((item): item is BookingView => item !== null);
+
+      const detailerRows = await db
+        .select({ approvedAt: detailerProfiles.approvedAt })
+        .from(detailerProfiles)
+        .innerJoin(users, eq(detailerProfiles.userId, users.id))
+        .where(and(isNull(users.deletedAt), realAccount));
+      const supportRows = await db
+        .select({
+          id: supportRequests.id,
+          userEmail: users.email,
+          category: supportRequests.category,
+          message: supportRequests.message,
+          status: supportRequests.status,
+          createdAt: supportRequests.createdAt
+        })
+        .from(supportRequests)
+        .leftJoin(users, eq(supportRequests.userId, users.id))
+        .where(or(isNull(users.email), realAccount))
+        .orderBy(desc(supportRequests.createdAt));
+      const deletionRows = await db
+        .select({
+          id: accountDeletionRequests.id,
+          userEmail: users.email,
+          status: accountDeletionRequests.status,
+          reason: accountDeletionRequests.reason,
+          requestedAt: accountDeletionRequests.requestedAt
+        })
+        .from(accountDeletionRequests)
+        .leftJoin(users, eq(accountDeletionRequests.userId, users.id))
+        .where(or(isNull(users.email), realAccount))
+        .orderBy(desc(accountDeletionRequests.requestedAt));
+      const adminRows = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          mfaRequired: users.mfaRequired,
+          createdAt: users.createdAt
+        })
+        .from(users)
+        .where(and(eq(users.role, "admin"), isNull(users.deletedAt)))
+        .orderBy(users.createdAt);
+      const auditRows = await db
+        .select({
+          id: auditLog.id,
+          actorEmail: users.email,
+          action: auditLog.action,
+          subjectType: auditLog.subjectType,
+          subjectId: auditLog.subjectId,
+          metadata: auditLog.metadata,
+          createdAt: auditLog.createdAt
+        })
+        .from(auditLog)
+        .leftJoin(users, eq(auditLog.actorId, users.id))
+        .where(or(isNull(users.email), realAccount))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(100);
+
+      const activeStatuses = new Set([
+        "confirmed",
+        "assigned",
+        "on_way",
+        "arrived",
+        "in_progress"
+      ]);
+      const countedBookings = bookingRows.filter(
+        ({ status }) => status !== "cancelled"
+      );
+      const bookingRequestValue = countedBookings.reduce(
+        (total, row) => total + numberValue(row.customerTotal),
+        0
+      );
+      const projectedDetailerCost = countedBookings.reduce(
+        (total, row) => total + numberValue(row.detailerEarnings),
+        0
+      );
+
+      return {
+        generatedAt: new Date().toISOString(),
+        paymentsConnected: false as const,
+        metrics: {
+          customers: customerRows.length,
+          detailers: detailerRows.length,
+          approvedDetailers: detailerRows.filter(({ approvedAt }) => approvedAt !== null).length,
+          bookings: bookingRows.length,
+          activeBookings: bookingRows.filter(({ status }) => activeStatuses.has(status)).length,
+          completedBookings: bookingRows.filter(({ status }) => status === "completed").length,
+          bookingRequestValue,
+          projectedDetailerCost,
+          projectedContribution: bookingRequestValue - projectedDetailerCost,
+          capturedPayments: 0,
+          paidPayouts: 0,
+          openSupportRequests: supportRows.filter(({ status }) => status === "open").length,
+          pendingDeletionRequests: deletionRows.filter(({ status }) =>
+            status === "requested" || status === "processing"
+          ).length
+        },
+        customers: customerRows.map((customer) => ({
+          ...customer,
+          vehicleCount: vehicleCountByCustomer.get(customer.id) ?? 0,
+          bookingCount: bookingCountByCustomer.get(customer.id) ?? 0,
+          createdAt: customer.createdAt.toISOString()
+        })),
+        bookings: bookingViews,
+        supportRequests: supportRows.map((request) => ({
+          ...request,
+          createdAt: request.createdAt.toISOString()
+        })),
+        deletionRequests: deletionRows.map((request) => ({
+          ...request,
+          requestedAt: request.requestedAt.toISOString()
+        })),
+        admins: adminRows.map((admin) => ({
+          ...admin,
+          createdAt: admin.createdAt.toISOString()
+        })),
+        audit: auditRows.map((entry) => ({
+          ...entry,
+          createdAt: entry.createdAt.toISOString()
+        }))
+      };
     },
     async createSession(userId, tokenHash, expiresAt) {
       await db.insert(sessions).values({ userId, tokenHash, expiresAt });
@@ -1608,7 +1854,9 @@ export const createMemoryRepository = (): ValxRepository => {
       return profile;
     },
     async listAdminDetailers() {
-      return [...memoryOnboarding.values()];
+      return [...memoryOnboarding.values()].filter(
+        ({ email }) => !email.endsWith("@staging.valx.invalid")
+      );
     },
     async reviewDetailerOnboarding(input) {
       const profile = memoryOnboarding.get(input.detailerId);
@@ -1627,6 +1875,68 @@ export const createMemoryRepository = (): ValxRepository => {
     },
     async findDetailerDocumentForAdmin(documentId) {
       return memoryDocumentStorage.get(documentId) ?? null;
+    },
+    async getAdminDashboard() {
+      const visibleUsers = [...memoryUsers.values()].filter(
+        ({ email }) => !email.endsWith("@staging.valx.invalid")
+      );
+      const customerUsers = visibleUsers.filter(({ role }) => role === "customer");
+      const detailerUsers = visibleUsers.filter(({ role }) => role === "detailer");
+      const visibleBookings = [...memoryBookings.values()].filter((booking) =>
+        customerUsers.some(({ id }) => id === booking.customerId)
+      );
+      const countedBookings = visibleBookings.filter(({ status }) => status !== "cancelled");
+      const bookingRequestValue = countedBookings.reduce(
+        (total, booking) => total + booking.customerTotal,
+        0
+      );
+      const projectedDetailerCost = countedBookings.reduce(
+        (total, booking) => total + booking.detailerEarnings,
+        0
+      );
+      return {
+        generatedAt: new Date().toISOString(),
+        paymentsConnected: false as const,
+        metrics: {
+          customers: customerUsers.length,
+          detailers: detailerUsers.length,
+          approvedDetailers: detailerUsers.filter(({ detailerApproved }) => detailerApproved).length,
+          bookings: visibleBookings.length,
+          activeBookings: visibleBookings.filter(({ status }) =>
+            ["confirmed", "assigned", "on_way", "arrived", "in_progress"].includes(status)
+          ).length,
+          completedBookings: visibleBookings.filter(({ status }) => status === "completed").length,
+          bookingRequestValue,
+          projectedDetailerCost,
+          projectedContribution: bookingRequestValue - projectedDetailerCost,
+          capturedPayments: 0,
+          paidPayouts: 0,
+          openSupportRequests: 0,
+          pendingDeletionRequests: 0
+        },
+        customers: customerUsers.map((customer) => ({
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          vehicleCount: [...memoryVehicles.values()].filter(({ customerId }) => customerId === customer.id).length,
+          bookingCount: visibleBookings.filter(({ customerId }) => customerId === customer.id).length,
+          createdAt: new Date().toISOString()
+        })),
+        bookings: visibleBookings,
+        supportRequests: [],
+        deletionRequests: [],
+        admins: visibleUsers
+          .filter(({ role }) => role === "admin")
+          .map((admin) => ({
+            id: admin.id,
+            name: admin.name,
+            email: admin.email,
+            mfaRequired: true,
+            createdAt: new Date().toISOString()
+          })),
+        audit: []
+      };
     },
     async createSession(userId, tokenHash, expiresAt) {
       sessionTokens.set(tokenHash, { userId, expiresAt, revoked: false });

@@ -66,6 +66,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { 
 .head-actions { display:flex; align-items:center; gap:9px; }
 .secure-pill { padding:9px 12px; border:1px solid rgba(255,138,31,.25); border-radius:999px; background:rgba(255,138,31,.06); color:var(--lime); font-size:7px; font-weight:900; letter-spacing:.11em; }
 .bell { width:35px; height:35px; border:1px solid #353d36; border-radius:11px; background:#171b18; color:var(--amber); font-size:9px; font-weight:900; }
+.refresh-admin { min-height:35px; padding:0 12px; border:1px solid #353d36; border-radius:11px; background:#171b18; color:var(--text); font-size:8px; font-weight:900; }
+.refresh-admin:disabled { opacity:.5; }
+.live-banner { color:#ffb36e; }
+.loading-live { color:var(--muted); text-align:center; }
+.disconnected-panel { max-width:900px; margin-top:14px; border-color:rgba(241,189,105,.35); background:linear-gradient(135deg,#1b1813,var(--panel)); }
+.disconnected-panel>strong { display:block; margin-bottom:12px; color:var(--amber); font-size:28px; }
+.disconnected-panel>p { color:var(--muted); font-size:11px; line-height:1.7; }
 .dashboard,.finance-page,.records-page,.team-page { max-width:1420px; }
 .metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
 .metric { min-height:135px; padding:20px; border:1px solid var(--line); border-radius:19px; background:linear-gradient(145deg,#171c18,#121613); }

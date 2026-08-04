@@ -487,6 +487,20 @@ describe("ValX API", () => {
     expect(session.statusCode).toBe(200);
     expect(session.json().user.email).toBe(email);
 
+    const dashboard = await app.inject({
+      method: "GET",
+      url: "/v1/admin/dashboard",
+      headers: { authorization: `Bearer ${verified.json().token}` }
+    });
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.json().dashboard).toMatchObject({
+      paymentsConnected: false,
+      metrics: { capturedPayments: 0, paidPayouts: 0 }
+    });
+    expect(dashboard.json().dashboard.admins).toEqual(
+      expect.arrayContaining([expect.objectContaining({ email })])
+    );
+
     const reusedCode = await app.inject({
       method: "POST",
       url: "/v1/admin/auth/verify-mfa",
