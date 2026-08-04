@@ -1,16 +1,24 @@
 import { randomBytes } from "node:crypto";
 
 const apiUrl = process.env.STAGING_API_URL?.replace(/\/$/, "");
-const inviteCode = process.env.BETA_INVITE_CODE;
+const customerEmail = process.env.STAGING_SMOKE_CUSTOMER_EMAIL;
+const customerPassword = process.env.STAGING_SMOKE_CUSTOMER_PASSWORD;
+const detailerEmail = process.env.STAGING_SMOKE_DETAILER_EMAIL;
+const detailerPassword = process.env.STAGING_SMOKE_DETAILER_PASSWORD;
 
-if (!apiUrl || !inviteCode) {
+if (
+  !apiUrl ||
+  !customerEmail ||
+  !customerPassword ||
+  !detailerEmail ||
+  !detailerPassword
+) {
   throw new Error(
-    "STAGING_API_URL and BETA_INVITE_CODE are required for the staging smoke test"
+    "STAGING_API_URL and the four STAGING_SMOKE account variables are required"
   );
 }
 
 const stamp = `${Date.now()}-${randomBytes(3).toString("hex")}`;
-const password = `ValX-beta-${randomBytes(12).toString("base64url")}!`;
 
 async function request(path, { token, ...options } = {}) {
   const response = await fetch(`${apiUrl}${path}`, {
@@ -28,31 +36,19 @@ async function request(path, { token, ...options } = {}) {
   return body;
 }
 
-const customer = await request("/v1/auth/register", {
+const customer = await request("/v1/auth/login", {
   method: "POST",
   body: {
-    role: "customer",
-    email: `customer-${stamp}@beta.valx.test`,
-    password,
-    name: "Staging Customer",
-    phone: "07123456789",
-    inviteCode,
-    waterAvailable: true
+    email: customerEmail,
+    password: customerPassword
   }
 });
 
-const detailer = await request("/v1/auth/register", {
+const detailer = await request("/v1/auth/login", {
   method: "POST",
   body: {
-    role: "detailer",
-    email: `detailer-${stamp}@beta.valx.test`,
-    password,
-    name: "Staging Detailer",
-    phone: "07987654321",
-    inviteCode,
-    ownWaterSupply: true,
-    serviceRadiusMiles: 12,
-    vatRegistered: false
+    email: detailerEmail,
+    password: detailerPassword
   }
 });
 
@@ -60,7 +56,7 @@ const vehicle = await request("/v1/customer/vehicles", {
   method: "POST",
   token: customer.token,
   body: {
-    registrationNumber: "BETA 01",
+    registrationNumber: `B${stamp.slice(-6)}`,
     make: "ValX",
     model: "Pilot Vehicle",
     type: "suv",
@@ -133,10 +129,9 @@ if (completed?.status !== "completed" || completed.paymentState !== "not_connect
 }
 
 for (const token of [customer.token, detailer.token]) {
-  await request("/v1/account/deletion-request", {
+  await request("/v1/auth/logout", {
     method: "POST",
-    token,
-    body: { confirmation: "DELETE", reason: "Automated staging smoke account" }
+    token
   });
 }
 

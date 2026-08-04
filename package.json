@@ -17,7 +17,7 @@
     "build:web": "pnpm --filter @valx/mobile build:web",
     "db:generate": "pnpm --filter @valx/database generate",
     "db:migrate": "pnpm --filter @valx/database migrate",
-    "test:staging": "node scripts/private-beta-smoke.mjs",
+    "test:staging": "node --env-file-if-exists=infra/staging/.env scripts/private-beta-smoke.mjs",
     "test": "pnpm run build:packages && pnpm --recursive --if-present run test",
     "typecheck": "pnpm --recursive --if-present run typecheck"
   },

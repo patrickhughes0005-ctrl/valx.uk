@@ -49,3 +49,19 @@ docker compose --env-file .env exec api \
 
 The command runs only inside the API container, updates the approved timestamp
 and writes an audit event. Do not expose it as a public HTTP route.
+
+## Automated staging smoke test
+
+Keep one dedicated verified customer and one dedicated verified, approved
+detailer for automated staging checks. Do not use a director, employee,
+customer or pilot detailer's real account. Put the four
+`STAGING_SMOKE_*` credentials in the deployment secret environment, then run:
+
+```sh
+pnpm test:staging
+```
+
+The script signs in, creates a uniquely identified test vehicle and booking,
+completes the customer-to-detailer status journey, verifies that payment is
+still disconnected and signs both sessions out. It never deletes or recreates
+the verified test accounts.
