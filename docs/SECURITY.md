@@ -23,7 +23,9 @@
   ownership; detailer acceptance also rechecks water-supply eligibility.
 - Admin access needs OIDC, an explicit allowlist, phishing-resistant MFA where
   possible, least-privilege roles, and 15-minute idle expiry.
-- Preview mode is forbidden in production.
+- Preview mode is forbidden in production and the application enforces that
+  fail-closed even if `ADMIN_PREVIEW_MODE` is accidentally set. The admin root
+  is non-indexable, non-cacheable and protected against framing.
 - Every privileged write must create an append-only audit event including actor,
   target, before/after summary, reason, timestamp, and correlation ID.
 

@@ -1,9 +1,18 @@
 import AdminDashboard from "./admin-dashboard";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "ValX Admin",
+  robots: { index: false, follow: false, noarchive: true }
+};
 
 export default function Home() {
-  if (process.env.ADMIN_PREVIEW_MODE !== "true") {
+  const previewEnabled =
+    process.env.NODE_ENV !== "production" &&
+    process.env.ADMIN_PREVIEW_MODE === "true";
+
+  if (!previewEnabled) {
     return (
       <main className="access-shell">
         <section className="access-card">
@@ -30,4 +39,3 @@ export default function Home() {
     />
   );
 }
-
