@@ -12,8 +12,13 @@
 - Customer and detailer passwords use salted scrypt hashes. Opaque bearer
   sessions are stored as keyed hashes, expire, can be revoked, and are kept in
   the mobile keychain/keystore.
-- Registration is invite-only for the private beta. Verified email/phone
-  recovery remains required before wider release.
+- Registration is invite-only for the private beta. Email verification and
+  password recovery use random, expiring, single-use tokens that are stored
+  only as keyed hashes. A password reset revokes every existing session.
+- Verification and reset requests return generic responses where account
+  discovery would otherwise be possible. Production requires TLS-protected
+  SMTP and never logs raw authentication links or tokens.
+- Phone verification remains required before a wider public release.
 - Every persistence endpoint enforces its server-side role and record
   ownership; detailer acceptance also rechecks water-supply eligibility.
 - Admin access needs OIDC, an explicit allowlist, phishing-resistant MFA where

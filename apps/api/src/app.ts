@@ -14,6 +14,10 @@ import Fastify, {
 import { z } from "zod";
 import type { ApiConfig } from "./config.js";
 import {
+  createAuthEmailDelivery,
+  type AuthEmailDelivery
+} from "./email.js";
+import {
   createMemoryRepository,
   createPostgresRepository,
   type Role,
@@ -22,7 +26,9 @@ import {
 } from "./repository.js";
 import {
   constantTimeTextEqual,
+  createOneTimeToken,
   createSessionToken,
+  hashOneTimeToken,
   hashPassword,
   hashSessionToken,
   normaliseEmail,
@@ -89,6 +95,18 @@ const loginInput = z.object({
   password: z.string().min(1).max(128)
 });
 
+const authTokenInput = z.object({
+  token: z.string().min(32).max(256)
+});
+
+const emailRequestInput = z.object({
+  email: z.string().email()
+});
+
+const passwordResetInput = authTokenInput.extend({
+  password: z.string().min(10).max(128)
+});
+
 const addressInput = z.object({
   googlePlaceId: z.string().min(1).optional(),
   label: z.string().trim().min(5).max(240),
@@ -138,12 +156,14 @@ const publicUser = (user: UserRecord) => ({
   role: user.role,
   email: user.email,
   name: user.name,
-  phone: user.phone
+  phone: user.phone,
+  emailVerified: user.emailVerifiedAt !== null
 });
 
 export const createApp = async (
   config: ApiConfig,
-  repository?: ValxRepository
+  repository?: ValxRepository,
+  emailDelivery?: AuthEmailDelivery
 ) => {
   const app = Fastify({
     logger: config.NODE_ENV !== "test",
@@ -172,6 +192,7 @@ export const createApp = async (
       ? createPostgresRepository(config.DATABASE_URL)
       : createMemoryRepository());
   app.addHook("onClose", async () => data.close());
+  const authEmail = emailDelivery ?? createAuthEmailDelivery(config);
 
   const bearerToken = (request: FastifyRequest) => {
     const authorization = request.headers.authorization;
@@ -221,6 +242,46 @@ export const createApp = async (
     };
   };
 
+  const sendAuthEmail = async (
+    user: UserRecord,
+    purpose: "verify_email" | "reset_password"
+  ) => {
+    const token = createOneTimeToken();
+    const expiresInMinutes =
+      purpose === "verify_email"
+        ? config.EMAIL_VERIFICATION_TTL_MINUTES
+        : config.PASSWORD_RESET_TTL_MINUTES;
+    await data.createAuthToken({
+      userId: user.id,
+      purpose,
+      tokenHash: hashOneTimeToken(token, config.AUTH_TOKEN_PEPPER),
+      expiresAt: new Date(Date.now() + expiresInMinutes * 60 * 1_000)
+    });
+    const path =
+      purpose === "verify_email" ? "/verify-email" : "/reset-password";
+    const actionUrl = new URL(config.PUBLIC_APP_URL);
+    actionUrl.hash = `${path}?token=${encodeURIComponent(token)}`;
+    await authEmail.send({
+      kind: purpose,
+      to: user.email,
+      actionUrl: actionUrl.toString(),
+      expiresInMinutes
+    });
+  };
+
+  const trySendAuthEmail = async (
+    user: UserRecord,
+    purpose: "verify_email" | "reset_password"
+  ) => {
+    try {
+      await sendAuthEmail(user, purpose);
+      return true;
+    } catch {
+      app.log.error("Authentication email delivery failed");
+      return false;
+    }
+  };
+
   const dvla = new DvlaClient({
     mode: config.DVLA_MODE,
     apiKey: config.DVLA_API_KEY,
@@ -243,8 +304,11 @@ export const createApp = async (
     }
   }));
 
-  app.get("/ready", async (_request, reply) => {
-    if (config.NODE_ENV === "production" && !config.DATABASE_URL) {
+  app.get("/ready", async (request, reply) => {
+    try {
+      await data.healthcheck();
+    } catch {
+      request.log.error("Database readiness check failed");
       return reply.code(503).send({ status: "not_ready" });
     }
     return { status: "ready" };
@@ -290,13 +354,101 @@ export const createApp = async (
         email,
         passwordHash: await hashPassword(input.password)
       });
-      return reply.code(201).send(await issueSession(user));
-    } catch (error) {
-      request.log.info({ error }, "Registration was not completed");
+      const delivered = await trySendAuthEmail(user, "verify_email");
+      return reply.code(201).send({
+        verificationRequired: true,
+        email: user.email,
+        verificationDelivery: delivered ? "sent" : "delayed"
+      });
+    } catch {
+      request.log.info("Registration was not completed");
       return reply.code(409).send({ error: "account_already_exists" });
     }
     }
   );
+
+  app.post(
+    "/v1/auth/verify-email",
+    {
+      config: {
+        rateLimit: {
+          max: config.NODE_ENV === "test" ? 10_000 : 10,
+          timeWindow: "1 minute"
+        }
+      }
+    },
+    async (request, reply) => {
+      const parsed = authTokenInput.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_verification_token" });
+      }
+      const user = await data.verifyEmail(
+        hashOneTimeToken(parsed.data.token, config.AUTH_TOKEN_PEPPER)
+      );
+      if (!user) {
+        return reply.code(400).send({ error: "invalid_verification_token" });
+      }
+      return issueSession(user);
+    }
+  );
+
+  app.post("/v1/auth/resend-verification", {
+    config: {
+      rateLimit: {
+        max: config.NODE_ENV === "test" ? 10_000 : 3,
+        timeWindow: "15 minutes"
+      }
+    }
+  }, async (request, reply) => {
+    const parsed = emailRequestInput.safeParse(request.body);
+    if (parsed.success) {
+      const user = await data.findUserByEmail(normaliseEmail(parsed.data.email));
+      if (user && !user.emailVerifiedAt) {
+        await trySendAuthEmail(user, "verify_email");
+      }
+    }
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/v1/auth/forgot-password", {
+    config: {
+      rateLimit: {
+        max: config.NODE_ENV === "test" ? 10_000 : 5,
+        timeWindow: "15 minutes"
+      }
+    }
+  }, async (request, reply) => {
+    const parsed = emailRequestInput.safeParse(request.body);
+    if (parsed.success) {
+      const user = await data.findUserByEmail(normaliseEmail(parsed.data.email));
+      if (user?.emailVerifiedAt) {
+        await trySendAuthEmail(user, "reset_password");
+      }
+    }
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/v1/auth/reset-password", {
+    config: {
+      rateLimit: {
+        max: config.NODE_ENV === "test" ? 10_000 : 10,
+        timeWindow: "15 minutes"
+      }
+    }
+  }, async (request, reply) => {
+    const parsed = passwordResetInput.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_password_reset" });
+    }
+    const reset = await data.resetPassword(
+      hashOneTimeToken(parsed.data.token, config.AUTH_TOKEN_PEPPER),
+      await hashPassword(parsed.data.password)
+    );
+    if (!reset) {
+      return reply.code(400).send({ error: "invalid_password_reset" });
+    }
+    return reply.code(204).send();
+  });
 
   app.post(
     "/v1/auth/login",
@@ -318,6 +470,9 @@ export const createApp = async (
     );
     if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
       return reply.code(401).send({ error: "invalid_credentials" });
+    }
+    if (!user.emailVerifiedAt) {
+      return reply.code(403).send({ error: "email_verification_required" });
     }
     return issueSession(user);
     }

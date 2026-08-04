@@ -2,6 +2,7 @@ import {
   accountDeletionRequests,
   addresses,
   auditLog,
+  authTokens,
   bookings,
   createDatabase,
   customerProfiles,
@@ -17,7 +18,7 @@ import type {
   ServiceId,
   VehicleType
 } from "@valx/pricing-policy";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export type Role = "customer" | "detailer" | "admin";
@@ -29,7 +30,10 @@ export type UserRecord = {
   name: string;
   phone: string | null;
   passwordHash: string;
+  emailVerifiedAt: Date | null;
 };
+
+export type AuthTokenPurpose = "verify_email" | "reset_password";
 
 export type BookingView = {
   id: string;
@@ -84,8 +88,17 @@ export type RegistrationInput = {
 
 export interface ValxRepository {
   close(): Promise<void>;
+  healthcheck(): Promise<void>;
   createUser(input: RegistrationInput): Promise<UserRecord>;
   findUserByEmail(email: string): Promise<UserRecord | null>;
+  createAuthToken(input: {
+    userId: string;
+    purpose: AuthTokenPurpose;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<void>;
+  verifyEmail(tokenHash: string): Promise<UserRecord | null>;
+  resetPassword(tokenHash: string, passwordHash: string): Promise<boolean>;
   createSession(
     userId: string,
     tokenHash: string,
@@ -256,6 +269,9 @@ export const createPostgresRepository = (
 
   return {
     close: connection.close,
+    async healthcheck() {
+      await db.execute(sql`select 1`);
+    },
     async createUser(input) {
       return db.transaction(async (tx) => {
         const [user] = await tx
@@ -300,7 +316,8 @@ export const createPostgresRepository = (
           email: user.email,
           name: user.name,
           phone: user.phone,
-          passwordHash: user.passwordHash
+          passwordHash: user.passwordHash,
+          emailVerifiedAt: user.emailVerifiedAt
         };
       });
     },
@@ -317,9 +334,109 @@ export const createPostgresRepository = (
             email: user.email,
             name: user.name,
             phone: user.phone,
-            passwordHash: user.passwordHash
+            passwordHash: user.passwordHash,
+            emailVerifiedAt: user.emailVerifiedAt
           }
         : null;
+    },
+    async createAuthToken(input) {
+      await db.insert(authTokens).values(input);
+    },
+    async verifyEmail(tokenHash) {
+      return db.transaction(async (tx) => {
+        const now = new Date();
+        const [token] = await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.tokenHash, tokenHash),
+              eq(authTokens.purpose, "verify_email"),
+              gt(authTokens.expiresAt, now),
+              isNull(authTokens.usedAt)
+            )
+          )
+          .returning({ userId: authTokens.userId });
+        if (!token) return null;
+        await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.userId, token.userId),
+              eq(authTokens.purpose, "verify_email"),
+              isNull(authTokens.usedAt)
+            )
+          );
+        const [user] = await tx
+          .update(users)
+          .set({ emailVerifiedAt: now, updatedAt: now })
+          .where(and(eq(users.id, token.userId), isNull(users.deletedAt)))
+          .returning();
+        if (!user) return null;
+        await tx.insert(auditLog).values({
+          actorId: user.id,
+          action: "account.email_verified",
+          subjectType: "user",
+          subjectId: user.id,
+          metadata: {}
+        });
+        return {
+          id: user.id,
+          role: user.role,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          passwordHash: user.passwordHash,
+          emailVerifiedAt: user.emailVerifiedAt
+        };
+      });
+    },
+    async resetPassword(tokenHash, passwordHash) {
+      return db.transaction(async (tx) => {
+        const now = new Date();
+        const [token] = await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.tokenHash, tokenHash),
+              eq(authTokens.purpose, "reset_password"),
+              gt(authTokens.expiresAt, now),
+              isNull(authTokens.usedAt)
+            )
+          )
+          .returning({ userId: authTokens.userId });
+        if (!token) return false;
+        await tx
+          .update(authTokens)
+          .set({ usedAt: now })
+          .where(
+            and(
+              eq(authTokens.userId, token.userId),
+              eq(authTokens.purpose, "reset_password"),
+              isNull(authTokens.usedAt)
+            )
+          );
+        const [user] = await tx
+          .update(users)
+          .set({ passwordHash, updatedAt: now })
+          .where(and(eq(users.id, token.userId), isNull(users.deletedAt)))
+          .returning({ id: users.id });
+        if (!user) return false;
+        await tx
+          .update(sessions)
+          .set({ revokedAt: now })
+          .where(and(eq(sessions.userId, user.id), isNull(sessions.revokedAt)));
+        await tx.insert(auditLog).values({
+          actorId: user.id,
+          action: "account.password_reset",
+          subjectType: "user",
+          subjectId: user.id,
+          metadata: {}
+        });
+        return true;
+      });
     },
     async createSession(userId, tokenHash, expiresAt) {
       await db.insert(sessions).values({ userId, tokenHash, expiresAt });
@@ -349,7 +466,8 @@ export const createPostgresRepository = (
         email: row.user.email,
         name: row.user.name,
         phone: row.user.phone,
-        passwordHash: row.user.passwordHash
+        passwordHash: row.user.passwordHash,
+        emailVerifiedAt: row.user.emailVerifiedAt
       };
     },
     async revokeSession(tokenHash) {
@@ -677,6 +795,15 @@ export const createMemoryRepository = (): ValxRepository => {
     string,
     { userId: string; expiresAt: Date; revoked: boolean }
   >();
+  const oneTimeTokens = new Map<
+    string,
+    {
+      userId: string;
+      purpose: AuthTokenPurpose;
+      expiresAt: Date;
+      used: boolean;
+    }
+  >();
   const memoryVehicles = new Map<string, MemoryVehicle>();
   const memoryAddresses = new Map<string, MemoryAddress>();
   const memoryQuotes = new Map<string, MemoryQuote>();
@@ -691,6 +818,7 @@ export const createMemoryRepository = (): ValxRepository => {
 
   return {
     async close() {},
+    async healthcheck() {},
     async createUser(input) {
       if ([...memoryUsers.values()].some((user) => user.email === input.email)) {
         throw new Error("user_exists");
@@ -698,7 +826,8 @@ export const createMemoryRepository = (): ValxRepository => {
       const user: MemoryUser = {
         ...input,
         id: randomUUID(),
-        phone: input.phone
+        phone: input.phone,
+        emailVerifiedAt: null
       };
       memoryUsers.set(user.id, user);
       return user;
@@ -707,6 +836,65 @@ export const createMemoryRepository = (): ValxRepository => {
       return (
         [...memoryUsers.values()].find((user) => user.email === email) ?? null
       );
+    },
+    async createAuthToken(input) {
+      oneTimeTokens.set(input.tokenHash, {
+        userId: input.userId,
+        purpose: input.purpose,
+        expiresAt: input.expiresAt,
+        used: false
+      });
+    },
+    async verifyEmail(tokenHash) {
+      const token = oneTimeTokens.get(tokenHash);
+      if (
+        !token ||
+        token.used ||
+        token.purpose !== "verify_email" ||
+        token.expiresAt <= new Date()
+      ) {
+        return null;
+      }
+      token.used = true;
+      for (const candidate of oneTimeTokens.values()) {
+        if (
+          candidate.userId === token.userId &&
+          candidate.purpose === "verify_email"
+        ) {
+          candidate.used = true;
+        }
+      }
+      const user = memoryUsers.get(token.userId);
+      if (!user) return null;
+      user.emailVerifiedAt = new Date();
+      return user;
+    },
+    async resetPassword(tokenHash, passwordHash) {
+      const token = oneTimeTokens.get(tokenHash);
+      if (
+        !token ||
+        token.used ||
+        token.purpose !== "reset_password" ||
+        token.expiresAt <= new Date()
+      ) {
+        return false;
+      }
+      token.used = true;
+      for (const candidate of oneTimeTokens.values()) {
+        if (
+          candidate.userId === token.userId &&
+          candidate.purpose === "reset_password"
+        ) {
+          candidate.used = true;
+        }
+      }
+      const user = memoryUsers.get(token.userId);
+      if (!user) return false;
+      user.passwordHash = passwordHash;
+      for (const session of sessionTokens.values()) {
+        if (session.userId === user.id) session.revoked = true;
+      }
+      return true;
     },
     async createSession(userId, tokenHash, expiresAt) {
       sessionTokens.set(tokenHash, { userId, expiresAt, revoked: false });

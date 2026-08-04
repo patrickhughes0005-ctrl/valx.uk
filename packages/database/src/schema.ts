@@ -43,6 +43,10 @@ export const deletionRequestStatus = pgEnum("deletion_request_status", [
   "completed",
   "declined_legal_hold"
 ]);
+export const authTokenPurpose = pgEnum("auth_token_purpose", [
+  "verify_email",
+  "reset_password"
+]);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -86,6 +90,31 @@ export const sessions = pgTable(
   (table) => [
     uniqueIndex("sessions_token_hash_idx").on(table.tokenHash),
     index("sessions_user_idx").on(table.userId, table.expiresAt)
+  ]
+);
+
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    purpose: authTokenPurpose("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    uniqueIndex("auth_tokens_token_hash_idx").on(table.tokenHash),
+    index("auth_tokens_user_purpose_idx").on(
+      table.userId,
+      table.purpose,
+      table.expiresAt
+    )
   ]
 );
 

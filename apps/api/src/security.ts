@@ -31,8 +31,15 @@ export const verifyPassword = async (password: string, encoded: string) => {
 
 export const createSessionToken = () => randomBytes(32).toString("base64url");
 
+export const createOneTimeToken = () => randomBytes(32).toString("base64url");
+
 export const hashSessionToken = (token: string, pepper: string) =>
   createHmac("sha256", pepper).update(token).digest("hex");
+
+export const hashOneTimeToken = (token: string, pepper: string) =>
+  createHmac("sha256", pepper)
+    .update(`valx-auth-token:${token}`)
+    .digest("hex");
 
 export const constantTimeTextEqual = (left: string, right: string) => {
   const leftDigest = createHmac("sha256", "valx-constant-time")

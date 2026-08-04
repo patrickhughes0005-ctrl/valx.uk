@@ -12,6 +12,25 @@ const environment = z.object({
   DATABASE_URL: z.string().optional(),
   AUTH_TOKEN_PEPPER: z.string().min(16).default("valx-local-pepper-change-me"),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(168),
+  EMAIL_VERIFICATION_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(15)
+    .max(1440)
+    .default(60),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(10)
+    .max(120)
+    .default(30),
+  AUTH_EMAIL_MODE: z.enum(["capture", "smtp"]).default("capture"),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: z.enum(["true", "false"]).default("false"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().min(3).default("ValX <support@valx.uk>"),
   BETA_REGISTRATION_MODE: z.enum(["invite_only", "open"]).default("invite_only"),
   BETA_INVITE_CODE: z.string().min(8).optional(),
   BETA_ALLOWED_EMAILS: z.string().default(""),
@@ -40,6 +59,7 @@ const environment = z.object({
 export type ApiConfig = z.infer<typeof environment> & {
   corsOrigins: string[];
   betaAllowedEmails: string[];
+  smtpSecure: boolean;
 };
 
 export const loadConfig = (
@@ -61,6 +81,12 @@ export const loadConfig = (
     if (parsed.SUPPORT_EMAIL.endsWith(".invalid")) {
       throw new Error("Production requires a monitored SUPPORT_EMAIL");
     }
+    if (parsed.AUTH_EMAIL_MODE !== "smtp") {
+      throw new Error("Production requires AUTH_EMAIL_MODE=smtp");
+    }
+    z.string().min(1).parse(parsed.SMTP_HOST);
+    z.string().min(1).parse(parsed.SMTP_USER);
+    z.string().min(12).parse(parsed.SMTP_PASSWORD);
   }
   if (parsed.NODE_ENV === "production" && parsed.DVLA_MODE === "live") {
     z.string().min(1).parse(parsed.DVLA_API_KEY);
@@ -70,6 +96,7 @@ export const loadConfig = (
   }
   return {
     ...parsed,
+    smtpSecure: parsed.SMTP_SECURE === "true",
     betaAllowedEmails: parsed.BETA_ALLOWED_EMAILS.split(",")
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),

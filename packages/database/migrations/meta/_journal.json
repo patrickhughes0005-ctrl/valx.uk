@@ -15,6 +15,13 @@
       "when": 1785360001000,
       "tag": "0001_private_beta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785810000000,
+      "tag": "0002_auth_hardening",
+      "breakpoints": true
     }
   ]
 }

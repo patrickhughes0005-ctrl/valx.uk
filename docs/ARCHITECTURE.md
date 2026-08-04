@@ -90,7 +90,7 @@ tokens and masked display values may be stored.
 2. Private beta (current): customer/detailer auth, database repositories,
    onboarding, booking acceptance/status, support, deletion, staging and store
    build profiles.
-3. Operational beta: admin OIDC + MFA, email recovery, evidence capture,
+3. Operational beta: admin OIDC + MFA, evidence capture,
    schedule, notifications, complaints, observed audit trails and restore test.
 4. Controlled payment pilot: separately approved payment integration, DVLA
    live credentials, Google production project, observability and security

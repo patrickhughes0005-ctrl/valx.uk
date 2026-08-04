@@ -13,6 +13,8 @@ staging pilot, not for the final high-availability production environment.
 - TLS termination through the host platform or a reverse proxy.
 - Encrypted off-host PostgreSQL backups.
 - A monitored support email address.
+- SMTP credentials for a ValX mailbox, using an app-specific password where
+  the provider supports one.
 
 ## Deploy
 
@@ -23,8 +25,12 @@ staging pilot, not for the final high-availability production environment.
 3. Run `docker compose --env-file .env up --build -d`.
 4. Route the browser app DNS name to `127.0.0.1:8080`, the admin DNS name to
    `127.0.0.1:3000`, and the API DNS name to `127.0.0.1:4000` through HTTPS.
-5. Verify `/ready`, create two invited test accounts and complete the automated
+5. Verify `/ready`, create two invited test accounts, confirm both verification
+   emails arrive, test one forgotten-password link and complete the automated
    private-beta acceptance script.
 
 Database migrations run before the API starts. DVLA remains in mock mode and no
 payment variables or endpoints exist.
+
+Production mode deliberately refuses to start with captured email. SMTP is
+required so nobody can create an account that they are unable to verify.

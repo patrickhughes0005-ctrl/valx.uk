@@ -29,11 +29,20 @@ services:
       DATABASE_URL: postgresql://valx:${STAGING_DATABASE_PASSWORD}@postgres:5432/valx
       AUTH_TOKEN_PEPPER: ${AUTH_TOKEN_PEPPER:?required}
       SESSION_TTL_HOURS: 168
+      EMAIL_VERIFICATION_TTL_MINUTES: 60
+      PASSWORD_RESET_TTL_MINUTES: 30
       BETA_REGISTRATION_MODE: invite_only
       BETA_INVITE_CODE: ${BETA_INVITE_CODE:?required}
       BETA_ALLOWED_EMAILS: ${BETA_ALLOWED_EMAILS:-}
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:?required}
       PUBLIC_APP_URL: ${STAGING_APP_URL:?required}
+      AUTH_EMAIL_MODE: ${AUTH_EMAIL_MODE:?required}
+      SMTP_HOST: ${SMTP_HOST:?required}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:?required}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?required}
+      SMTP_FROM: ${SMTP_FROM:?required}
       DVLA_MODE: mock
       DVLA_API_BASE_URL: https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1
       GOOGLE_MAPS_MODE: ${GOOGLE_MAPS_MODE:-mock}

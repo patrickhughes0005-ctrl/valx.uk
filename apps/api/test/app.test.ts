@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
+import { CaptureAuthEmailDelivery } from "../src/email";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -8,12 +9,48 @@ const config = loadConfig({
   DVLA_MODE: "mock",
   GOOGLE_MAPS_MODE: "mock"
 });
-const app = await createApp(config);
+const emailDelivery = new CaptureAuthEmailDelivery();
+const app = await createApp(config, undefined, emailDelivery);
+
+const latestToken = (
+  to: string,
+  kind: "verify_email" | "reset_password"
+) => {
+  const message = emailDelivery.messages.findLast(
+    (candidate) => candidate.to === to && candidate.kind === kind
+  );
+  if (!message) throw new Error(`Missing ${kind} email for ${to}`);
+  const actionUrl = new URL(message.actionUrl);
+  const fragmentUrl = new URL(actionUrl.hash.slice(1), "https://valx.test");
+  const token = fragmentUrl.searchParams.get("token");
+  if (!token) throw new Error(`Missing token in ${kind} email`);
+  return token;
+};
+
+const verifyLatestRegistration = async (email: string) =>
+  app.inject({
+    method: "POST",
+    url: "/v1/auth/verify-email",
+    payload: { token: latestToken(email, "verify_email") }
+  });
 
 beforeAll(async () => app.ready());
 afterAll(async () => app.close());
 
 describe("ValX API", () => {
+  it("refuses production startup without real authentication email delivery", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://valx:password@database:5432/valx",
+        AUTH_TOKEN_PEPPER: "a-production-pepper-with-more-than-32-characters",
+        BETA_INVITE_CODE: "private-beta-code",
+        SUPPORT_EMAIL: "support@valx.uk",
+        AUTH_EMAIL_MODE: "capture"
+      })
+    ).toThrow("Production requires AUTH_EMAIL_MODE=smtp");
+  });
+
   it("reports that real payments are not connected", async () => {
     const response = await app.inject({ method: "GET", url: "/health" });
     expect(response.statusCode).toBe(200);
@@ -22,6 +59,12 @@ describe("ValX API", () => {
       paymentsConnected: false,
       integrations: { dvla: "mock", googleMaps: "mock" }
     });
+  });
+
+  it("reports repository readiness", async () => {
+    const response = await app.inject({ method: "GET", url: "/ready" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ready" });
   });
 
   it("uses the shared approved pricing package", async () => {
@@ -71,7 +114,15 @@ describe("ValX API", () => {
       }
     });
     expect(customerRegistration.statusCode).toBe(201);
-    const customerToken = customerRegistration.json().token as string;
+    expect(customerRegistration.json()).toMatchObject({
+      verificationRequired: true,
+      verificationDelivery: "sent"
+    });
+    const customerVerification = await verifyLatestRegistration(
+      "customer.journey@valx.test"
+    );
+    expect(customerVerification.statusCode).toBe(200);
+    const customerToken = customerVerification.json().token as string;
     const customerHeaders = {
       authorization: `Bearer ${customerToken}`
     };
@@ -162,8 +213,12 @@ describe("ValX API", () => {
       }
     });
     expect(detailerRegistration.statusCode).toBe(201);
+    const detailerVerification = await verifyLatestRegistration(
+      "detailer.journey@valx.test"
+    );
+    expect(detailerVerification.statusCode).toBe(200);
     const detailerHeaders = {
-      authorization: `Bearer ${detailerRegistration.json().token as string}`
+      authorization: `Bearer ${detailerVerification.json().token as string}`
     };
 
     const offersResponse = await app.inject({
@@ -210,6 +265,100 @@ describe("ValX API", () => {
     });
   });
 
+  it("verifies email and securely resets a forgotten password", async () => {
+    const email = "auth.security@valx.test";
+    const originalPassword = "Original-password-2026";
+    const newPassword = "Replacement-password-2026";
+    const registration = await app.inject({
+      method: "POST",
+      url: "/v1/auth/register",
+      payload: {
+        role: "customer",
+        email,
+        password: originalPassword,
+        name: "Auth Security",
+        phone: "07123450000",
+        waterAvailable: true
+      }
+    });
+    expect(registration.statusCode).toBe(201);
+
+    const blockedLogin = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email, password: originalPassword }
+    });
+    expect(blockedLogin.statusCode).toBe(403);
+    expect(blockedLogin.json().error).toBe("email_verification_required");
+
+    const verificationToken = latestToken(email, "verify_email");
+    const verification = await app.inject({
+      method: "POST",
+      url: "/v1/auth/verify-email",
+      payload: { token: verificationToken }
+    });
+    expect(verification.statusCode).toBe(200);
+    expect(verification.json().user.emailVerified).toBe(true);
+    const originalSession = verification.json().token as string;
+
+    const reusedVerification = await app.inject({
+      method: "POST",
+      url: "/v1/auth/verify-email",
+      payload: { token: verificationToken }
+    });
+    expect(reusedVerification.statusCode).toBe(400);
+
+    const unknownReset = await app.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email: "unknown@valx.test" }
+    });
+    expect(unknownReset.statusCode).toBe(202);
+    expect(unknownReset.json()).toEqual({ accepted: true });
+
+    const resetRequest = await app.inject({
+      method: "POST",
+      url: "/v1/auth/forgot-password",
+      payload: { email }
+    });
+    expect(resetRequest.statusCode).toBe(202);
+    const resetToken = latestToken(email, "reset_password");
+
+    const reset = await app.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token: resetToken, password: newPassword }
+    });
+    expect(reset.statusCode).toBe(204);
+
+    const revokedSession = await app.inject({
+      method: "GET",
+      url: "/v1/me",
+      headers: { authorization: `Bearer ${originalSession}` }
+    });
+    expect(revokedSession.statusCode).toBe(401);
+
+    const oldLogin = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email, password: originalPassword }
+    });
+    expect(oldLogin.statusCode).toBe(401);
+    const newLogin = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email, password: newPassword }
+    });
+    expect(newLogin.statusCode).toBe(200);
+
+    const reusedReset = await app.inject({
+      method: "POST",
+      url: "/v1/auth/reset-password",
+      payload: { token: resetToken, password: originalPassword }
+    });
+    expect(reusedReset.statusCode).toBe(400);
+  });
+
   it("queues support and account deletion, then revokes the session", async () => {
     const registration = await app.inject({
       method: "POST",
@@ -223,8 +372,9 @@ describe("ValX API", () => {
         waterAvailable: true
       }
     });
+    const verified = await verifyLatestRegistration("delete.me@valx.test");
     const headers = {
-      authorization: `Bearer ${registration.json().token as string}`
+      authorization: `Bearer ${verified.json().token as string}`
     };
     const support = await app.inject({
       method: "POST",

@@ -9,6 +9,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -37,6 +39,11 @@ const errorCopy: Record<string, string> = {
   beta_invitation_required: "This private beta needs a valid invitation.",
   account_already_exists: "An account already exists for that email.",
   invalid_credentials: "The email or password is not recognised.",
+  email_verification_required: "Verify your email address before signing in.",
+  invalid_verification_token:
+    "That verification link has expired or was already used.",
+  invalid_password_reset:
+    "That password reset link has expired or was already used.",
   invalid_or_expired_session: "Your session has expired. Please sign in again.",
   booking_reference_invalid: "Your quote expired. Please create a new quote.",
   booking_no_longer_available: "Another detailer has accepted this job.",
@@ -137,54 +144,141 @@ function BrandHeader({ detail }: { detail: string }) {
   );
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void }) {
-  const [mode, setMode] = useState<"signin" | "create">("signin");
+type AuthMode =
+  | "signin"
+  | "create"
+  | "verification_sent"
+  | "verify"
+  | "forgot"
+  | "reset";
+
+function AuthScreen({
+  onAuthenticated
+}: {
+  onAuthenticated: (user: User) => void;
+}) {
+  const [mode, setMode] = useState<AuthMode>("signin");
   const [role, setRole] = useState<Role>("customer");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [actionToken, setActionToken] = useState("");
   const [water, setWater] = useState(true);
   const [vatRegistered, setVatRegistered] = useState(false);
   const [vatNumber, setVatNumber] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const applyAuthLink = (url: string | null) => {
+      if (!url) return;
+      try {
+        const parsed = new URL(url);
+        const action = parsed.hash
+          ? new URL(parsed.hash.slice(1), "https://valx.local")
+          : parsed;
+        const token = action.searchParams.get("token");
+        if (!token) return;
+        setActionToken(token);
+        setMode(action.pathname.includes("reset-password") ? "reset" : "verify");
+      } catch {
+        // Ignore malformed external links and keep the normal sign-in screen.
+      }
+    };
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      applyAuthLink(window.location.href);
+    } else {
+      void Linking.getInitialURL().then(applyAuthLink);
+    }
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      applyAuthLink(url);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const submit = async () => {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const result = await api<{ token: string; user: User }>(
-        mode === "signin" ? "/v1/auth/login" : "/v1/auth/register",
-        {
+      if (mode === "forgot") {
+        await api("/v1/auth/forgot-password", {
+          method: "POST",
+          authenticated: false,
+          body: { email }
+        });
+        setNotice(
+          "If that address has a verified ValX account, a reset link is on its way."
+        );
+        return;
+      }
+      if (mode === "reset") {
+        await api("/v1/auth/reset-password", {
+          method: "POST",
+          authenticated: false,
+          body: { token: actionToken, password }
+        });
+        setActionToken("");
+        setPassword("");
+        setMode("signin");
+        setNotice(
+          "Your password has been changed. Sign in with the new password."
+        );
+        return;
+      }
+      if (mode === "verify") {
+        const result = await api<{ token: string; user: User }>(
+          "/v1/auth/verify-email",
+          {
+            method: "POST",
+            authenticated: false,
+            body: { token: actionToken }
+          }
+        );
+        await session.set(result.token);
+        onAuthenticated(result.user);
+        return;
+      }
+      if (mode === "create") {
+        await api<{ verificationRequired: true }>("/v1/auth/register", {
           method: "POST",
           authenticated: false,
           body:
-            mode === "signin"
-              ? { email, password }
-              : role === "customer"
-                ? {
-                    role,
-                    name,
-                    email,
-                    phone,
-                    password,
-                    inviteCode,
-                    waterAvailable: water
-                  }
-                : {
-                    role,
-                    name,
-                    email,
-                    phone,
-                    password,
-                    inviteCode,
-                    ownWaterSupply: water,
-                    serviceRadiusMiles: 12,
-                    vatRegistered,
-                    vatNumber: vatRegistered ? vatNumber : undefined
-                  }
+            role === "customer"
+              ? {
+                  role,
+                  name,
+                  email,
+                  phone,
+                  password,
+                  inviteCode,
+                  waterAvailable: water
+                }
+              : {
+                  role,
+                  name,
+                  email,
+                  phone,
+                  password,
+                  inviteCode,
+                  ownWaterSupply: water,
+                  serviceRadiusMiles: 12,
+                  vatRegistered,
+                  vatNumber: vatRegistered ? vatNumber : undefined
+                }
+        });
+        setMode("verification_sent");
+        return;
+      }
+      const result = await api<{ token: string; user: User }>(
+        "/v1/auth/login",
+        {
+          method: "POST",
+          authenticated: false,
+          body: { email, password }
         }
       );
       await session.set(result.token);
@@ -196,25 +290,53 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void
     }
   };
 
+  const resendVerification = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/v1/auth/resend-verification", {
+        method: "POST",
+        authenticated: false,
+        body: { email }
+      });
+      setNotice(
+        "If the account is waiting for verification, a fresh link is on its way."
+      );
+    } catch (caught) {
+      setError(messageFor(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title: Record<AuthMode, string> = {
+    signin: "Welcome back",
+    create: "Create your ValX account",
+    verification_sent: "Check your email",
+    verify: "Verify your email",
+    forgot: "Reset your password",
+    reset: "Choose a new password"
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <BrandHeader detail="Private beta" />
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>INVITE-ONLY ACCESS</Text>
-        <Text style={styles.heroTitle}>
-          {mode === "signin" ? "Welcome back" : "Create your ValX account"}
-        </Text>
+        <Text style={styles.heroTitle}>{title[mode]}</Text>
         <Text style={styles.body}>
           This pilot takes real booking requests but does not take payment.
         </Text>
       </View>
 
-      <Choice
-        values={["signin", "create"] as const}
-        value={mode}
-        onChange={setMode}
-        labels={{ signin: "Sign in", create: "Create account" }}
-      />
+      {(mode === "signin" || mode === "create") && (
+        <Choice
+          values={["signin", "create"] as const}
+          value={mode}
+          onChange={setMode}
+          labels={{ signin: "Sign in", create: "Create account" }}
+        />
+      )}
       {mode === "create" && (
         <>
           <Choice
@@ -275,32 +397,92 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void
           )}
         </>
       )}
-      <Field
-        label="Email address"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-      />
+      {mode !== "verify" && mode !== "reset" && (
+        <Field
+          label="Email address"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      )}
+      {(mode === "signin" || mode === "create" || mode === "reset") && (
+        <Field
+          label={mode === "reset" ? "New password" : "Password"}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+      )}
       {mode === "create" && (
         <Text style={styles.legalNote}>
           By continuing, you agree to the applicable ValX terms and privacy
           notice. Passwords must contain at least 10 characters.
         </Text>
       )}
+      {mode === "verification_sent" && (
+        <Text style={styles.body}>
+          We sent a secure verification link to {email}. Open it to activate
+          the account. The link expires after one hour.
+        </Text>
+      )}
+      {notice ? <Text style={styles.feedback}>{notice}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <PrimaryButton
-        label={busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Join beta"}
-        onPress={submit}
-        disabled={busy}
-      />
+      {(mode === "signin" || mode === "create") && (
+        <PrimaryButton
+          label={
+            busy
+              ? "Please wait…"
+              : mode === "signin"
+                ? "Sign in"
+                : "Join beta"
+          }
+          onPress={submit}
+          disabled={busy}
+        />
+      )}
+      {(mode === "forgot" || mode === "reset" || mode === "verify") && (
+        <PrimaryButton
+          label={
+            busy
+              ? "Please wait..."
+              : mode === "forgot"
+                ? "Send reset link"
+                : mode === "reset"
+                  ? "Change password"
+                  : "Verify email"
+          }
+          onPress={submit}
+          disabled={
+            busy ||
+            ((mode === "verify" || mode === "reset") && !actionToken)
+          }
+        />
+      )}
+      {mode === "signin" && (
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => setMode("forgot")}
+        >
+          <Text style={styles.secondaryText}>Forgot password?</Text>
+        </Pressable>
+      )}
+      {mode === "verification_sent" && (
+        <PrimaryButton
+          label={busy ? "Please wait..." : "Resend verification email"}
+          onPress={resendVerification}
+          disabled={busy}
+        />
+      )}
+      {mode !== "signin" && mode !== "create" && (
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => setMode("signin")}
+        >
+          <Text style={styles.secondaryText}>Back to sign in</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
