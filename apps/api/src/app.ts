@@ -12,7 +12,7 @@ import Fastify, {
   type FastifyRequest
 } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { ApiConfig } from "./config.js";
@@ -225,6 +225,7 @@ export const createApp = async (
   );
   const documentStorageRoot = resolve(config.DOCUMENT_STORAGE_PATH);
   await mkdir(documentStorageRoot, { recursive: true, mode: 0o700 });
+  await chmod(documentStorageRoot, 0o700);
 
   await app.register(helmet, { global: true });
   await app.register(cors, {
