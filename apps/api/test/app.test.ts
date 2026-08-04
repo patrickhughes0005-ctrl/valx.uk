@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { loadConfig } from "../src/config";
 import { CaptureAuthEmailDelivery } from "../src/email";
+import { createMemoryRepository } from "../src/repository";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -10,7 +11,8 @@ const config = loadConfig({
   GOOGLE_MAPS_MODE: "mock"
 });
 const emailDelivery = new CaptureAuthEmailDelivery();
-const app = await createApp(config, undefined, emailDelivery);
+const repository = createMemoryRepository();
+const app = await createApp(config, repository, emailDelivery);
 
 const latestToken = (
   to: string,
@@ -220,6 +222,21 @@ describe("ValX API", () => {
     const detailerHeaders = {
       authorization: `Bearer ${detailerVerification.json().token as string}`
     };
+
+    const unapprovedOffers = await app.inject({
+      method: "GET",
+      url: "/v1/detailer/offers",
+      headers: detailerHeaders
+    });
+    expect(unapprovedOffers.statusCode).toBe(200);
+    expect(unapprovedOffers.json().offers).toHaveLength(0);
+
+    expect(
+      await repository.approveDetailerByEmail(
+        "detailer.journey@valx.test",
+        "Automated API test"
+      )
+    ).toBe(true);
 
     const offersResponse = await app.inject({
       method: "GET",

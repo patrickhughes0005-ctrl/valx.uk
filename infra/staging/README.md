@@ -34,3 +34,18 @@ payment variables or endpoints exist.
 
 Production mode deliberately refuses to start with captured email. SMTP is
 required so nobody can create an account that they are unable to verify.
+
+## Approve a pilot detailer
+
+Creating an invited detailer account does not make work visible. After the
+identity, insurance and onboarding checks are complete, run this on the
+staging host (replace both example values):
+
+```sh
+docker compose --env-file .env exec api \
+  pnpm --filter @valx/api detailer:approve -- \
+  --email detailer@example.com --operator "ValX operator name" --confirm
+```
+
+The command runs only inside the API container, updates the approved timestamp
+and writes an audit event. Do not expose it as a public HTTP route.

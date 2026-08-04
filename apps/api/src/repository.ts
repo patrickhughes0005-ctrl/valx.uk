@@ -99,6 +99,7 @@ export interface ValxRepository {
   }): Promise<void>;
   verifyEmail(tokenHash: string): Promise<UserRecord | null>;
   resetPassword(tokenHash: string, passwordHash: string): Promise<boolean>;
+  approveDetailerByEmail(email: string, operator: string): Promise<boolean>;
   createSession(
     userId: string,
     tokenHash: string,
@@ -438,6 +439,42 @@ export const createPostgresRepository = (
         return true;
       });
     },
+    async approveDetailerByEmail(email, operator) {
+      return db.transaction(async (tx) => {
+        const [detailer] = await tx
+          .select({
+            id: users.id,
+            emailVerifiedAt: users.emailVerifiedAt
+          })
+          .from(users)
+          .innerJoin(
+            detailerProfiles,
+            eq(detailerProfiles.userId, users.id)
+          )
+          .where(
+            and(
+              eq(users.email, email),
+              eq(users.role, "detailer"),
+              isNull(users.deletedAt)
+            )
+          )
+          .limit(1);
+        if (!detailer?.emailVerifiedAt) return false;
+        const now = new Date();
+        await tx
+          .update(detailerProfiles)
+          .set({ approvedAt: now, updatedAt: now })
+          .where(eq(detailerProfiles.userId, detailer.id));
+        await tx.insert(auditLog).values({
+          actorId: null,
+          action: "detailer.approved_by_operator",
+          subjectType: "user",
+          subjectId: detailer.id,
+          metadata: { operator, source: "server_cli" }
+        });
+        return true;
+      });
+    },
     async createSession(userId, tokenHash, expiresAt) {
       await db.insert(sessions).values({ userId, tokenHash, expiresAt });
     },
@@ -631,7 +668,9 @@ export const createPostgresRepository = (
         .from(detailerProfiles)
         .where(eq(detailerProfiles.userId, detailerId))
         .limit(1);
-      if (!profile) return [];
+      if (!profile || !profile.onboardingComplete || !profile.approvedAt) {
+        return [];
+      }
       const rows = await db
         .select({
           id: bookings.id,
@@ -659,6 +698,8 @@ export const createPostgresRepository = (
       const [eligibility] = await db
         .select({
           ownWaterSupply: detailerProfiles.ownWaterSupply,
+          onboardingComplete: detailerProfiles.onboardingComplete,
+          approvedAt: detailerProfiles.approvedAt,
           waterAvailable: addresses.waterAvailable
         })
         .from(detailerProfiles)
@@ -668,6 +709,8 @@ export const createPostgresRepository = (
         .limit(1);
       if (
         !eligibility ||
+        !eligibility.onboardingComplete ||
+        !eligibility.approvedAt ||
         (eligibility.waterAvailable === false &&
           !eligibility.ownWaterSupply)
       ) {
@@ -764,7 +807,8 @@ export const createPostgresRepository = (
   };
 };
 
-type MemoryUser = UserRecord & RegistrationInput;
+type MemoryUser = UserRecord &
+  RegistrationInput & { detailerApproved: boolean };
 type MemoryQuote = {
   id: string;
   customerId: string;
@@ -827,7 +871,8 @@ export const createMemoryRepository = (): ValxRepository => {
         ...input,
         id: randomUUID(),
         phone: input.phone,
-        emailVerifiedAt: null
+        emailVerifiedAt: null,
+        detailerApproved: input.role === "customer"
       };
       memoryUsers.set(user.id, user);
       return user;
@@ -894,6 +939,14 @@ export const createMemoryRepository = (): ValxRepository => {
       for (const session of sessionTokens.values()) {
         if (session.userId === user.id) session.revoked = true;
       }
+      return true;
+    },
+    async approveDetailerByEmail(email) {
+      const detailer = [...memoryUsers.values()].find(
+        (user) => user.email === email && user.role === "detailer"
+      );
+      if (!detailer?.emailVerifiedAt) return false;
+      detailer.detailerApproved = true;
       return true;
     },
     async createSession(userId, tokenHash, expiresAt) {
@@ -1009,6 +1062,7 @@ export const createMemoryRepository = (): ValxRepository => {
     },
     async listDetailerOffers(detailerId) {
       const detailer = memoryUsers.get(detailerId);
+      if (!detailer?.detailerApproved) return [];
       return [...memoryBookings.values()].filter(
         (booking) =>
           booking.status === "confirmed" &&
@@ -1028,6 +1082,7 @@ export const createMemoryRepository = (): ValxRepository => {
       if (
         !booking ||
         !detailer ||
+        !detailer.detailerApproved ||
         booking.status !== "confirmed" ||
         booking.detailerId ||
         (booking.address.waterAvailable === false &&

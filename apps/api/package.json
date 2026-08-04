@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "detailer:approve": "node --env-file-if-exists=../../.env dist/approve-detailer.js",
     "dev": "tsx --env-file-if-exists=../../.env watch src/index.ts",
     "start": "node --env-file-if-exists=../../.env dist/index.js",
     "test": "vitest run",

@@ -27,6 +27,14 @@ public launch and must not promise live payment or DVLA lookup.
 Use people who have explicitly agreed to test. Do not add real customer or
 detailer information on somebody else's behalf.
 
+## Detailer approval gate
+
+- A detailer may create and verify an invited account, but cannot see or accept
+  work until ValX has completed its checks and explicitly approved the account.
+- Until the real MFA-protected admin portal exists, approval is performed only
+  from the staging server with the audited `detailer:approve` command. It
+  requires the detailer email, the operator name and an explicit `--confirm`.
+
 ## Required scenarios
 
 1. Customer receives an invite, creates an account and signs back in.
@@ -34,7 +42,8 @@ detailer information on somebody else's behalf.
 3. Customer saves a complete service address and confirms water availability.
 4. Customer selects each service and checks the locked pricing breakdown.
 5. Customer creates a prebooked request and confirms that no payment is taken.
-6. An eligible detailer sees the offer and the displayed guaranteed pay.
+6. ValX approves the checked pilot detailer; only then does the eligible
+   detailer see the offer and displayed guaranteed pay.
 7. Detailer accepts, marks on-way, arrived, in-progress and completed.
 8. Customer sees the completed status and assigned detailer.
 9. Both roles send a support request.
