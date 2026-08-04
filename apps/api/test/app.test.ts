@@ -463,6 +463,14 @@ describe("ValX API", () => {
     expect(adminLogin.statusCode).toBe(202);
     expect(adminLogin.json()).toEqual({ accepted: true });
 
+    const invalidAdminLogin = await app.inject({
+      method: "POST",
+      url: "/v1/admin/auth/login",
+      payload: { email, password: "Incorrect-admin-password" }
+    });
+    expect(invalidAdminLogin.statusCode).toBe(401);
+    expect(invalidAdminLogin.json()).toEqual({ error: "invalid_credentials" });
+
     const code = latestAdminMfaCode(email);
     const wrongCode = await app.inject({
       method: "POST",

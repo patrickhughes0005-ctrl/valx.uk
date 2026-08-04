@@ -58,14 +58,28 @@ export default function AdminAuthGate({ apiUrl }: { apiUrl: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      if (!response.ok) throw new Error("request_failed");
+      if (!response.ok) {
+        if (response.status === 401) throw new Error("invalid_credentials");
+        if (response.status === 429) throw new Error("rate_limited");
+        if (response.status === 503) throw new Error("email_delivery_failed");
+        throw new Error("request_failed");
+      }
       setPhase("mfa");
       setPassword("");
       setNotice(
-        "If the account details are correct, a six-digit code has been sent by email."
+        "A six-digit code has been sent by email. It expires in 10 minutes."
       );
-    } catch {
-      setError("Sign-in is temporarily unavailable. Please try again.");
+    } catch (caught) {
+      const reason = caught instanceof Error ? caught.message : "request_failed";
+      setError(
+        reason === "invalid_credentials"
+          ? "The email or password is not recognised."
+          : reason === "rate_limited"
+            ? "Too many sign-in attempts. Wait 15 minutes before trying again."
+            : reason === "email_delivery_failed"
+              ? "Your password was accepted, but the security email could not be sent. Please try again shortly."
+              : "Sign-in is temporarily unavailable. Please try again."
+      );
     } finally {
       setBusy(false);
     }
@@ -233,7 +247,7 @@ export default function AdminAuthGate({ apiUrl }: { apiUrl: string }) {
               setError("");
             }}
           >
-            Back to sign in
+            Didn&apos;t receive it? Return and request a new code
           </button>
         )}
         <div className="security-note">

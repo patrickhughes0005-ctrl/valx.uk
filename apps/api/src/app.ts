@@ -216,7 +216,11 @@ export const createApp = async (
   const app = Fastify({
     logger: config.NODE_ENV !== "test",
     bodyLimit: 64 * 1024,
-    requestIdHeader: "x-request-id"
+    requestIdHeader: "x-request-id",
+    // Production traffic can only reach the API through the localhost-bound
+    // Caddy proxy. Trust its forwarded client address so authentication rate
+    // limits are applied per visitor rather than to every visitor collectively.
+    trustProxy: config.NODE_ENV === "production"
   });
   app.addContentTypeParser(
     ["application/pdf", "image/jpeg", "image/png"],
@@ -595,18 +599,26 @@ export const createApp = async (
     },
     async (request, reply) => {
       const parsed = loginInput.safeParse(request.body);
-      if (parsed.success) {
-        const user = await data.findUserByEmail(
-          normaliseEmail(parsed.data.email)
-        );
-        if (
-          user?.role === "admin" &&
-          user.emailVerifiedAt &&
-          (await verifyPassword(parsed.data.password, user.passwordHash))
-        ) {
-          await trySendAdminMfaEmail(user);
-        }
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_login" });
       }
+
+      const user = await data.findUserByEmail(
+        normaliseEmail(parsed.data.email)
+      );
+      if (
+        user?.role !== "admin" ||
+        !user.emailVerifiedAt ||
+        !(await verifyPassword(parsed.data.password, user.passwordHash))
+      ) {
+        return reply.code(401).send({ error: "invalid_credentials" });
+      }
+
+      const delivered = await trySendAdminMfaEmail(user);
+      if (!delivered) {
+        return reply.code(503).send({ error: "auth_email_delivery_failed" });
+      }
+
       return reply.code(202).send({ accepted: true });
     }
   );
