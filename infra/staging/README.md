@@ -65,3 +65,20 @@ The script signs in, creates a uniquely identified test vehicle and booking,
 completes the customer-to-detailer status journey, verifies that payment is
 still disconnected and signs both sessions out. It never deletes or recreates
 the verified test accounts.
+
+On the staging host, bootstrap or refresh only those dedicated accounts before
+the first run:
+
+```sh
+python3 /opt/valx/scripts/configure-staging-smoke-secrets.py \
+  --env-file /opt/valx/infra/staging/.env
+docker compose --env-file .env run --rm --no-deps --env-from-file .env api \
+  node /workspace/scripts/bootstrap-staging-smoke.mjs
+```
+
+Then execute the live journey:
+
+```sh
+docker compose --env-file .env run --rm --no-deps --env-from-file .env api \
+  pnpm test:staging
+```
