@@ -422,3 +422,132 @@ export const auditLog = pgTable("audit_log", {
     .notNull()
     .defaultNow()
 });
+
+export const stripeAccounts = pgTable(
+  "stripe_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    detailerId: uuid("detailer_id")
+      .notNull()
+      .references(() => users.id),
+    stripeAccountId: text("stripe_account_id")
+      .notNull()
+      .unique(),
+    chargesEnabled: boolean("charges_enabled")
+      .notNull()
+      .default(false),
+    payoutsEnabled: boolean("payouts_enabled")
+      .notNull()
+      .default(false),
+    onboardingComplete: boolean("onboarding_complete")
+      .notNull()
+      .default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  }
+);
+
+
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id),
+
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id),
+
+    detailerId: uuid("detailer_id")
+      .references(() => users.id),
+
+    stripeCheckoutSessionId: text("stripe_checkout_session_id")
+      .unique(),
+
+    stripePaymentIntentId: text("stripe_payment_intent_id")
+      .unique(),
+
+    amount: integer("amount").notNull(),
+
+    currency: text("currency")
+      .notNull()
+      .default("gbp"),
+
+    status: text("status")
+      .notNull()
+      .default("pending"),
+
+    refundedAmount: integer("refunded_amount")
+      .notNull()
+      .default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  },
+  (table) => [
+    index("payments_booking_idx")
+      .on(table.bookingId)
+  ]
+);
+
+export const stripeEvents = pgTable(
+  "stripe_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    stripeEventId: text("stripe_event_id")
+      .notNull()
+      .unique(),
+
+    type: text("type")
+      .notNull(),
+
+    processedAt: timestamp("processed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  }
+);
+
+export const stripePayouts = pgTable(
+  "stripe_payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    detailerId: uuid("detailer_id")
+      .notNull()
+      .references(() => users.id),
+
+    stripePayoutId: text("stripe_payout_id")
+      .notNull()
+      .unique(),
+
+    amount: integer("amount")
+      .notNull(),
+
+    currency: text("currency")
+      .notNull()
+      .default("gbp"),
+
+    status: text("status")
+      .notNull(),
+
+    arrivalDate: timestamp("arrival_date", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+  }
+);
+
